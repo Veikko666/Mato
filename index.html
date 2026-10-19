@@ -57,6 +57,7 @@
   .icon-btn svg { width: 100%; height: 100%; display: block; }
   .icon-btn.muted .waves { display: none; }
   .icon-btn:not(.muted) .cross { display: none; }
+  .icon-btn.muted { color: var(--muted); }
 
   .overlay {
     position: fixed; inset: 0; z-index: 4; display: flex; align-items: center; justify-content: center;
@@ -133,6 +134,13 @@
   <span id="score" hidden>0</span>
   <div class="hud-right">
     <span id="best"></span>
+    <button class="icon-btn" id="musicBtn" type="button" aria-label="Music">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M9 18V5l11-2v13"/>
+        <circle cx="6" cy="18" r="3" fill="currentColor"/><circle cx="17" cy="16" r="3" fill="currentColor"/>
+        <g class="cross"><path d="M3 3l18 18" stroke-width="2.4"/></g>
+      </svg>
+    </button>
     <button class="icon-btn" id="muteBtn" type="button" aria-label="Sound">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor"/>
@@ -202,6 +210,7 @@
   const LAST_NAME_KEY = 'mato-luola-nimi';
   const LANG_KEY = 'glowworm-lang';
   const MUTE_KEY = 'glowworm-muted';
+  const MUSIC_KEY = 'glowworm-music';
 
   function getItem(k) { try { return localStorage.getItem(k); } catch { return null; } }
   function setItem(k, v) { try { localStorage.setItem(k, v); } catch {} }
@@ -241,7 +250,7 @@
       newTop: 'You made the top 10! Enter your name:', namePh: 'Your name', anon: 'Anonymous',
       empty: 'No scores yet. Be the first.',
       best: 'Best', paused: 'Paused', resume: 'Tap to continue',
-      lang: 'Suomeksi', tribute: 'A tribute to SFCave', sound: 'Sound',
+      lang: 'Suomeksi', tribute: 'A tribute to SFCave', sound: 'Sound', music: 'Music',
     },
     fi: {
       title: 'Kiiltomato',
@@ -252,7 +261,7 @@
       newTop: 'Pääsit top 10 -listalle! Kirjoita nimesi:', namePh: 'Nimesi', anon: 'Nimetön',
       empty: 'Ei vielä tuloksia. Ole ensimmäinen.',
       best: 'Ennätys', paused: 'Tauko', resume: 'Napauta jatkaaksesi',
-      lang: 'In English', tribute: 'Kunnianosoitus SFCave-pelille', sound: 'Äänet',
+      lang: 'In English', tribute: 'Kunnianosoitus SFCave-pelille', sound: 'Äänet', music: 'Musiikki',
     },
   };
   let lang = getItem(LANG_KEY) === 'fi' ? 'fi' : 'en';
@@ -264,6 +273,7 @@
     document.querySelectorAll('[data-t]').forEach(el => { el.textContent = t(el.dataset.t); });
     document.querySelectorAll('[data-tp]').forEach(el => { el.placeholder = t(el.dataset.tp); });
     $('muteBtn').setAttribute('aria-label', t('sound'));
+    $('musicBtn').setAttribute('aria-label', t('music'));
     updateBest();
   }
 
@@ -271,6 +281,102 @@
   const Sound = (() => {
     let ac = null, master, ambGain, thrustGain, thrustFilter, echo, noiseBuf;
     let muted = getItem(MUTE_KEY) === '1';
+
+    // ----- Generative ambient music -----
+    // A slow four-chord loop (Am9, Fmaj9, Cmaj7, G6/9) as MIDI notes.
+    const CHORDS = [
+      { bass: 45, pad: [60, 64, 67, 71] },
+      { bass: 41, pad: [57, 64, 67, 72] },
+      { bass: 48, pad: [55, 59, 64, 67] },
+      { bass: 43, pad: [59, 62, 64, 69] },
+    ];
+    const CHORD_LEN = 9;       // seconds per chord
+    const STEP = 0.375;        // pluck grid
+    const MUSIC_VOL = 0.55;
+    let musicBus, musicIn, pluckIn;
+    let musicOn = getItem(MUSIC_KEY) !== '0';
+    let busy = false;          // more plucks while playing
+    let nextChordAt = 0, nextStepAt = 0, chordIdx = 0, stepIdx = 0;
+    const chordLog = [];       // [{t, idx}] so plucks follow the chord sounding at their time
+    const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
+
+    function chordAt(time) {
+      for (let i = chordLog.length - 1; i >= 0; i--) if (chordLog[i].t <= time) return CHORDS[chordLog[i].idx];
+      return CHORDS[0];
+    }
+
+    function playChord(ch, at) {
+      const end = at + CHORD_LEN;
+      const f = ac.createBiquadFilter();
+      f.type = 'lowpass'; f.Q.value = 0.7;
+      f.frequency.setValueAtTime(450, at);
+      f.frequency.linearRampToValueAtTime(1300, at + CHORD_LEN * 0.55);
+      f.frequency.linearRampToValueAtTime(500, end + 3);
+      const g = ac.createGain();
+      g.gain.setValueAtTime(0.0001, at);
+      g.gain.linearRampToValueAtTime(0.03, at + 2.8);
+      g.gain.setValueAtTime(0.03, end);
+      g.gain.linearRampToValueAtTime(0.0001, end + 3.5);
+      f.connect(g); g.connect(musicIn);
+      for (const m of ch.pad) {
+        for (const det of [-8, 8]) {
+          const o = ac.createOscillator();
+          o.type = 'sawtooth'; o.frequency.value = mtof(m); o.detune.value = det + (Math.random() - 0.5) * 4;
+          o.connect(f); o.start(at); o.stop(end + 4);
+        }
+      }
+      // A faint glassy shimmer two octaves above the root
+      const sh = ac.createOscillator(), shG = ac.createGain();
+      sh.type = 'sine'; sh.frequency.value = mtof(ch.pad[0] + 24);
+      shG.gain.setValueAtTime(0.0001, at + 1);
+      shG.gain.linearRampToValueAtTime(0.012, at + 4);
+      shG.gain.linearRampToValueAtTime(0.0001, end + 2);
+      sh.connect(shG); shG.connect(musicIn); sh.start(at + 1); sh.stop(end + 2.5);
+      // Soft sub bass
+      const b = ac.createOscillator(), bG = ac.createGain();
+      b.type = 'sine'; b.frequency.value = mtof(ch.bass);
+      bG.gain.setValueAtTime(0.0001, at);
+      bG.gain.linearRampToValueAtTime(0.11, at + 1.5);
+      bG.gain.setValueAtTime(0.11, end - 0.5);
+      bG.gain.linearRampToValueAtTime(0.0001, end + 1.5);
+      b.connect(bG); bG.connect(musicBus); b.start(at); b.stop(end + 2);
+    }
+
+    function pluck(at) {
+      const ch = chordAt(at);
+      const m = ch.pad[(Math.random() * ch.pad.length) | 0] + (Math.random() < 0.25 ? 24 : 12);
+      const g = ac.createGain();
+      g.gain.setValueAtTime(0.0001, at);
+      g.gain.exponentialRampToValueAtTime(0.045, at + 0.006);
+      g.gain.exponentialRampToValueAtTime(0.0001, at + 1.4);
+      g.connect(pluckIn);
+      const o = ac.createOscillator(); o.type = 'triangle'; o.frequency.value = mtof(m);
+      const o2 = ac.createOscillator(); o2.type = 'sine'; o2.frequency.value = mtof(m + 19);
+      const g2 = ac.createGain(); g2.gain.value = 0.25;
+      o.connect(g); o2.connect(g2); g2.connect(g);
+      o.start(at); o2.start(at); o.stop(at + 1.5); o2.stop(at + 1.5);
+    }
+
+    function musicTick() {
+      if (!ac || ac.state !== 'running' || !musicOn) return;
+      const now = ac.currentTime;
+      if (nextChordAt < now) nextChordAt = now + 0.1;
+      if (nextStepAt < now) nextStepAt = now + 0.1;
+      while (nextChordAt < now + 1) {
+        chordLog.push({ t: nextChordAt, idx: chordIdx });
+        if (chordLog.length > 4) chordLog.shift();
+        playChord(CHORDS[chordIdx], nextChordAt);
+        chordIdx = (chordIdx + 1) % CHORDS.length;
+        nextChordAt += CHORD_LEN;
+      }
+      while (nextStepAt < now + 1) {
+        // Plucks favour the on-beats; sparse in the menu, livelier in game
+        const p = (busy ? 0.38 : 0.14) * (stepIdx % 2 ? 0.5 : 1);
+        if (Math.random() < p) pluck(nextStepAt);
+        stepIdx++;
+        nextStepAt += STEP;
+      }
+    }
 
     function init() {
       if (ac) { if (ac.state === 'suspended' && !document.hidden) ac.resume(); return; }
@@ -292,22 +398,36 @@
       const echoLp = ac.createBiquadFilter(); echoLp.type = 'lowpass'; echoLp.frequency.value = 2200;
       echo.connect(echoLp); echoLp.connect(fb); fb.connect(echo); echoLp.connect(master);
 
-      // Ambient drone with slowly breathing filter
+      // Cave air: soft filtered noise under everything
       ambGain = ac.createGain(); ambGain.gain.value = 0;
-      const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 380;
-      lp.connect(ambGain); ambGain.connect(master);
-      [[55, 'sine', 0.5], [82.4, 'sine', 0.35], [110.6, 'triangle', 0.12]].forEach(([f, type, v]) => {
-        const o = ac.createOscillator(); o.type = type; o.frequency.value = f;
-        const g = ac.createGain(); g.gain.value = v;
-        o.connect(g); g.connect(lp); o.start();
-      });
-      const lfo = ac.createOscillator(); lfo.frequency.value = 0.07;
-      const lfoAmt = ac.createGain(); lfoAmt.gain.value = 160;
-      lfo.connect(lfoAmt); lfoAmt.connect(lp.frequency); lfo.start();
+      ambGain.connect(master);
       const air = ac.createBufferSource(); air.buffer = noiseBuf; air.loop = true;
       const airBp = ac.createBiquadFilter(); airBp.type = 'bandpass'; airBp.frequency.value = 450; airBp.Q.value = 0.6;
-      const airG = ac.createGain(); airG.gain.value = 0.1;
+      const airG = ac.createGain(); airG.gain.value = 0.06;
       air.connect(airBp); airBp.connect(airG); airG.connect(ambGain); air.start();
+
+      // Music bus: dry + long synthetic reverb, with its own echo for plucks
+      musicBus = ac.createGain(); musicBus.gain.value = musicOn ? MUSIC_VOL : 0;
+      musicBus.connect(master);
+      musicIn = ac.createGain();
+      musicIn.connect(musicBus);
+      const verb = ac.createConvolver();
+      const len = ac.sampleRate * 4;
+      const ir = ac.createBuffer(2, len, ac.sampleRate);
+      for (let ch = 0; ch < 2; ch++) {
+        const d = ir.getChannelData(ch);
+        for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3);
+      }
+      verb.buffer = ir;
+      const verbG = ac.createGain(); verbG.gain.value = 0.7;
+      musicIn.connect(verb); verb.connect(verbG); verbG.connect(musicBus);
+      pluckIn = ac.createGain();
+      const pDelay = ac.createDelay(2); pDelay.delayTime.value = 0.56;
+      const pFb = ac.createGain(); pFb.gain.value = 0.42;
+      const pLp = ac.createBiquadFilter(); pLp.type = 'lowpass'; pLp.frequency.value = 1800;
+      pluckIn.connect(musicIn); pluckIn.connect(pDelay);
+      pDelay.connect(pLp); pLp.connect(pFb); pFb.connect(pDelay); pLp.connect(musicIn);
+      setInterval(musicTick, 250);
 
       // Thrust: filtered noise "whoosh", gain follows the finger
       const th = ac.createBufferSource(); th.buffer = noiseBuf; th.loop = true;
@@ -337,7 +457,16 @@
         setItem(MUTE_KEY, m ? '1' : '0');
         if (ac) master.gain.setTargetAtTime(m ? 0 : 0.9, ac.currentTime, 0.05);
       },
-      mood(level) { if (ac) ambGain.gain.setTargetAtTime(level, ac.currentTime, 0.8); },
+      get musicOn() { return musicOn; },
+      setMusic(on) {
+        musicOn = on;
+        setItem(MUSIC_KEY, on ? '1' : '0');
+        if (ac) musicBus.gain.setTargetAtTime(on ? MUSIC_VOL : 0, ac.currentTime, 0.4);
+      },
+      mood(level, playing) {
+        busy = !!playing;
+        if (ac) ambGain.gain.setTargetAtTime(level, ac.currentTime, 0.8);
+      },
       thrust(on, vy) {
         if (!ac) return;
         const now = ac.currentTime;
@@ -914,7 +1043,7 @@
   }
 
   // ---------- States & UI ----------
-  const scoreEl = $('score'), bestEl = $('best'), muteBtn = $('muteBtn');
+  const scoreEl = $('score'), bestEl = $('best'), muteBtn = $('muteBtn'), musicBtn = $('musicBtn');
   const menu = $('menu'), over = $('over'), scoresView = $('scores'), pauseView = $('pause');
   const nameForm = $('nameForm'), nameInput = $('nameInput'), overButtons = $('overButtons');
   let pendingScore = 0, highlightIndex = -1, overTimer = 0;
@@ -932,7 +1061,7 @@
     scoreEl.hidden = false;
     scoreEl.textContent = '0';
     updateBest();
-    Sound.mood(0.09);
+    Sound.mood(0.09, true);
   }
 
   function pauseGame() {
@@ -1024,7 +1153,10 @@
     Sound.mood(0.04);
   }
 
-  function syncMute() { muteBtn.classList.toggle('muted', Sound.muted); }
+  function syncMute() {
+    muteBtn.classList.toggle('muted', Sound.muted);
+    musicBtn.classList.toggle('muted', !Sound.musicOn);
+  }
 
   $('startBtn').addEventListener('click', startGame);
   $('scoresBtn').addEventListener('click', showScores);
@@ -1040,9 +1172,10 @@
   });
   pauseView.addEventListener('pointerdown', e => { e.preventDefault(); resumeGame(); });
   muteBtn.addEventListener('click', () => { Sound.init(); Sound.setMuted(!Sound.muted); syncMute(); });
+  musicBtn.addEventListener('click', () => { Sound.init(); Sound.setMusic(!Sound.musicOn); syncMute(); });
   nameInput.addEventListener('keydown', e => { if (e.key === 'Enter') saveName(); e.stopPropagation(); });
   document.addEventListener('click', e => {
-    if (e.target.closest('button')) { Sound.init(); if (e.target.closest('button') !== muteBtn) Sound.click(); }
+    if (e.target.closest('button')) { Sound.init(); if (!e.target.closest('.icon-btn')) Sound.click(); }
   });
   // Start the menu ambience on the first touch anywhere
   document.addEventListener('pointerdown', () => { Sound.init(); if (state === 'menu') Sound.mood(0.04); }, { once: true });

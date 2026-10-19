@@ -9,7 +9,8 @@ A glowing worm flies through a dark cave that keeps getting narrower.
 
 You score 10 points per second. The run ends when the worm hits a wall or an obstacle.
 The cave changes colour as you go deeper, and the top 10 list is stored in the browser (localStorage).
-English by default; switch to Finnish from the menu. All sounds are synthesized with Web Audio,
+English by default; switch to Finnish from the menu. All sound, including the calm generative
+ambient soundtrack, is synthesized with Web Audio (music and sound can be toggled separately),
 so there are no asset files.
 
 ## Playing
