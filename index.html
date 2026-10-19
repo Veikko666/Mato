@@ -1,134 +1,216 @@
 <!doctype html>
-<html lang="fi">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<meta name="theme-color" content="#0b0f14">
+<meta name="theme-color" content="#04090f">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<title>Mato luolassa</title>
+<title>Glowworm</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&display=swap">
 <style>
+  /* Dark bioluminescent cave: one deliberate dark look, glow accents only. */
   :root {
-    --bg: #0b0f14;
-    --panel: rgba(12, 18, 26, 0.92);
-    --text: #e8f0f7;
-    --muted: #8ea2b5;
-    --accent: #7ee36b;
-    --danger: #ff6b6b;
+    --bg: #04090f;
+    --panel: rgba(6, 18, 26, 0.78);
+    --line: rgba(140, 255, 200, 0.16);
+    --text: #e4fbf6;
+    --muted: #87aab0;
+    --glow: #a6ff7e;
+    --glow-deep: #3fbf4a;
+    --ink: #08200a;
+    --font: "Fredoka", "Trebuchet MS", system-ui, sans-serif;
     color-scheme: dark;
   }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   html, body {
     margin: 0; height: 100%; overflow: hidden;
-    background: var(--bg); color: var(--text);
-    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--text); font-family: var(--font);
     -webkit-user-select: none; user-select: none;
     -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent;
     touch-action: none; overscroll-behavior: none;
   }
   canvas { display: block; width: 100%; height: 100%; }
+
   #hud {
-    position: fixed; top: env(safe-area-inset-top, 0); left: 0; right: 0;
-    display: flex; justify-content: space-between; padding: 10px 16px;
-    font-weight: 700; font-size: 20px; pointer-events: none;
-    text-shadow: 0 2px 4px rgba(0,0,0,.6);
+    position: fixed; top: 0; left: 0; right: 0;
+    display: flex; justify-content: space-between; align-items: center; gap: 12px;
+    padding: calc(8px + env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) 8px max(16px, env(safe-area-inset-left, 0px));
+    pointer-events: none; z-index: 5;
   }
-  #hud .best { color: var(--muted); font-weight: 600; }
+  #score {
+    font-size: 30px; font-weight: 700; font-variant-numeric: tabular-nums;
+    color: var(--text); text-shadow: 0 0 12px rgba(166, 255, 126, .55);
+  }
+  #score.bump { animation: bump .45s ease-out; }
+  @keyframes bump { 0% { transform: scale(1.35); color: var(--glow); } 100% { transform: scale(1); } }
+  .hud-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+  #best { color: var(--muted); font-weight: 600; font-size: 16px; font-variant-numeric: tabular-nums; }
+  .icon-btn {
+    pointer-events: auto; width: 42px; height: 42px; margin: 0; padding: 9px;
+    border-radius: 50%; background: rgba(255,255,255,.07); border: 1px solid var(--line);
+    color: var(--text); cursor: pointer;
+  }
+  .icon-btn svg { width: 100%; height: 100%; display: block; }
+  .icon-btn.muted .waves { display: none; }
+  .icon-btn:not(.muted) .cross { display: none; }
+
   .overlay {
-    position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
-    padding: 16px; background: rgba(0,0,0,.35);
+    position: fixed; inset: 0; z-index: 4; display: flex; align-items: center; justify-content: center;
+    padding: 16px max(16px, env(safe-area-inset-right, 0px)) 16px max(16px, env(safe-area-inset-left, 0px));
+    background: radial-gradient(ellipse at center, rgba(2,6,10,.15), rgba(2,6,10,.6));
   }
   .overlay.hidden { display: none; }
   .panel {
     width: 100%; max-width: 380px; max-height: 100%; overflow-y: auto;
-    background: var(--panel); border: 1px solid rgba(255,255,255,.08);
-    border-radius: 16px; padding: 20px; text-align: center;
-    box-shadow: 0 10px 40px rgba(0,0,0,.5);
+    background: var(--panel); border: 1px solid var(--line); border-radius: 22px;
+    padding: 24px 22px; text-align: center;
+    box-shadow: 0 0 60px rgba(80, 255, 160, .08), 0 20px 50px rgba(0,0,0,.55);
+    -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+    animation: rise .35s ease-out;
   }
-  h1 { margin: 0 0 4px; font-size: 30px; color: var(--accent); letter-spacing: .5px; }
-  h2 { margin: 0 0 8px; font-size: 24px; }
-  p { margin: 6px 0; color: var(--muted); line-height: 1.4; }
-  .score-big { font-size: 44px; font-weight: 800; color: var(--text); margin: 4px 0 8px; }
+  @keyframes rise { from { transform: translateY(14px); opacity: 0; } to { transform: none; opacity: 1; } }
+  .logo {
+    margin: 0; font-size: 46px; font-weight: 700; letter-spacing: 1px; line-height: 1.05;
+    color: var(--glow); text-wrap: balance;
+    text-shadow: 0 0 6px rgba(166,255,126,.9), 0 0 24px rgba(166,255,126,.55), 0 0 60px rgba(63,191,74,.5);
+    animation: pulse 3.2s ease-in-out infinite;
+  }
+  @keyframes pulse { 50% { text-shadow: 0 0 4px rgba(166,255,126,.7), 0 0 14px rgba(166,255,126,.35), 0 0 36px rgba(63,191,74,.3); } }
+  h2 { margin: 0 0 6px; font-size: 26px; font-weight: 600; text-wrap: balance; }
+  p { margin: 8px 0; color: var(--muted); line-height: 1.45; }
+  .tagline { color: var(--text); font-size: 18px; margin-top: 12px; }
+  .tribute { font-size: 13px; margin-top: 16px; letter-spacing: .4px; opacity: .8; }
+  .score-big {
+    font-size: 56px; font-weight: 700; margin: 2px 0; font-variant-numeric: tabular-nums;
+    color: var(--text); text-shadow: 0 0 20px rgba(166,255,126,.45);
+  }
+  .badge {
+    display: inline-block; padding: 4px 12px; border-radius: 999px; font-weight: 600; font-size: 14px;
+    letter-spacing: .5px; text-transform: uppercase; color: var(--ink); background: var(--glow);
+    box-shadow: 0 0 18px rgba(166,255,126,.6);
+  }
+  .stack { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; }
   button {
-    font: inherit; font-weight: 700; font-size: 18px; cursor: pointer;
-    border: 0; border-radius: 12px; padding: 14px 18px; width: 100%; margin-top: 10px;
-    background: var(--accent); color: #0b1a07; touch-action: manipulation;
+    font: inherit; font-weight: 600; font-size: 19px; cursor: pointer; margin: 0;
+    border: 0; border-radius: 14px; padding: 14px 18px; width: 100%;
+    background: linear-gradient(180deg, var(--glow), var(--glow-deep)); color: var(--ink);
+    box-shadow: 0 0 22px rgba(166,255,126,.35); touch-action: manipulation;
   }
-  button.secondary { background: rgba(255,255,255,.1); color: var(--text); }
+  button:active { transform: translateY(1px); }
+  button:focus-visible { outline: 3px solid var(--text); outline-offset: 2px; }
+  button.secondary { background: rgba(255,255,255,.08); color: var(--text); box-shadow: none; border: 1px solid var(--line); }
+  button.link { background: none; box-shadow: none; color: var(--muted); font-size: 15px; padding: 6px; text-decoration: underline; }
   input {
-    font: inherit; font-size: 18px; width: 100%; padding: 12px; margin-top: 8px;
-    border-radius: 10px; border: 1px solid rgba(255,255,255,.2);
-    background: rgba(0,0,0,.4); color: var(--text); text-align: center;
+    font: inherit; font-size: 19px; width: 100%; padding: 12px; margin-top: 4px;
+    border-radius: 12px; border: 1px solid var(--line);
+    background: rgba(0,0,0,.45); color: var(--text); text-align: center;
     -webkit-user-select: text; user-select: text;
   }
-  ol { list-style: none; padding: 0; margin: 12px 0 0; text-align: left; counter-reset: rank; }
+  input:focus { outline: 2px solid var(--glow); }
+  ol { list-style: none; padding: 0; margin: 14px 0 0; text-align: left; counter-reset: rank; }
   ol li {
-    counter-increment: rank; display: flex; gap: 10px; padding: 7px 10px;
-    border-radius: 8px; font-size: 16px;
+    counter-increment: rank; display: flex; gap: 10px; padding: 8px 12px; border-radius: 10px; font-size: 17px;
   }
   ol li:nth-child(odd) { background: rgba(255,255,255,.04); }
-  ol li::before { content: counter(rank) "."; width: 26px; color: var(--muted); }
-  ol li .n { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  ol li .s { font-weight: 700; font-variant-numeric: tabular-nums; }
-  ol li.me { background: rgba(126,227,107,.18); color: var(--accent); }
-  .empty { color: var(--muted); text-align: center; padding: 10px; }
+  ol li::before { content: counter(rank) "."; width: 28px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  ol li .n { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  ol li .s { font-weight: 600; font-variant-numeric: tabular-nums; }
+  ol li.me { background: rgba(166,255,126,.16); color: var(--glow); }
+  .empty { color: var(--muted); text-align: center; padding: 12px; }
+  @media (prefers-reduced-motion: reduce) {
+    .logo, .panel, #score.bump { animation: none; }
+  }
 </style>
 </head>
 <body>
 <canvas id="game"></canvas>
-<div id="hud" hidden><span id="score">0</span><span class="best" id="best">Ennätys 0</span></div>
+
+<div id="hud">
+  <span id="score" hidden>0</span>
+  <div class="hud-right">
+    <span id="best"></span>
+    <button class="icon-btn" id="muteBtn" type="button" aria-label="Sound">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor"/>
+        <g class="waves"><path d="M16.5 8.5a5 5 0 0 1 0 7"/><path d="M19 6a8.5 8.5 0 0 1 0 12"/></g>
+        <g class="cross"><path d="M17 9l5 6"/><path d="M22 9l-5 6"/></g>
+      </svg>
+    </button>
+  </div>
+</div>
 
 <div class="overlay" id="menu">
   <div class="panel">
-    <h1>Mato luolassa</h1>
-    <p>Pidä sormi näytöllä, niin mato nousee. Päästä irti, niin se laskee.</p>
-    <p>Väistä seiniä – luola kapenee koko ajan!</p>
-    <button id="startBtn">Aloita</button>
-    <button class="secondary" id="scoresBtn">Top 10</button>
+    <h1 class="logo" data-t="title">Glowworm</h1>
+    <p class="tagline" data-t="tagline"></p>
+    <p data-t="hint"></p>
+    <div class="stack">
+      <button id="startBtn" type="button" data-t="play"></button>
+      <button class="secondary" id="scoresBtn" type="button" data-t="top10"></button>
+      <button class="link" id="langBtn" type="button" data-t="lang"></button>
+    </div>
+    <p class="tribute" data-t="tribute"></p>
   </div>
 </div>
 
 <div class="overlay hidden" id="over">
   <div class="panel">
-    <h2>Törmäsit!</h2>
+    <h2 data-t="crashed"></h2>
     <div class="score-big" id="finalScore">0</div>
+    <span class="badge" id="newBest" hidden data-t="newBest"></span>
     <div id="nameForm" hidden>
-      <p>Pääsit top 10 -listalle! Kirjoita nimesi:</p>
-      <input id="nameInput" maxlength="16" autocomplete="off" placeholder="Nimi">
-      <button id="saveBtn">Tallenna</button>
+      <p data-t="newTop"></p>
+      <input id="nameInput" maxlength="16" autocomplete="off" data-tp="namePh">
+      <div class="stack"><button id="saveBtn" type="button" data-t="save"></button></div>
     </div>
-    <div id="overButtons">
-      <button id="againBtn">Uudestaan</button>
-      <button class="secondary" id="overScoresBtn">Top 10</button>
+    <div class="stack" id="overButtons">
+      <button id="againBtn" type="button" data-t="again"></button>
+      <button class="secondary" id="overScoresBtn" type="button" data-t="top10"></button>
     </div>
   </div>
 </div>
 
 <div class="overlay hidden" id="scores">
   <div class="panel">
-    <h2>Top 10</h2>
+    <h2 data-t="top10"></h2>
     <ol id="scoreList"></ol>
-    <button id="scoresPlayBtn">Pelaa</button>
-    <button class="secondary" id="scoresBackBtn">Takaisin</button>
+    <div class="stack">
+      <button id="scoresPlayBtn" type="button" data-t="play"></button>
+      <button class="secondary" id="scoresBackBtn" type="button" data-t="back"></button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay hidden" id="pause">
+  <div class="panel">
+    <h2 data-t="paused"></h2>
+    <p data-t="resume"></p>
   </div>
 </div>
 
 <script>
 (() => {
   'use strict';
+  const $ = id => document.getElementById(id);
 
-  // ---------- Tallennus ----------
+  // ---------- Storage ----------
   const STORE_KEY = 'mato-luola-top10';
   const LAST_NAME_KEY = 'mato-luola-nimi';
+  const LANG_KEY = 'glowworm-lang';
+  const MUTE_KEY = 'glowworm-muted';
+
+  function getItem(k) { try { return localStorage.getItem(k); } catch { return null; } }
+  function setItem(k, v) { try { localStorage.setItem(k, v); } catch {} }
 
   function loadScores() {
     try {
-      const list = JSON.parse(localStorage.getItem(STORE_KEY) || '[]');
+      const list = JSON.parse(getItem(STORE_KEY) || '[]');
       return Array.isArray(list) ? list.filter(e => e && typeof e.score === 'number').slice(0, 10) : [];
     } catch { return []; }
-  }
-  function saveScores(list) {
-    try { localStorage.setItem(STORE_KEY, JSON.stringify(list)); } catch {}
   }
   function qualifies(score) {
     const list = loadScores();
@@ -140,7 +222,7 @@
     list.push(entry);
     list.sort((a, b) => b.score - a.score || a.date - b.date);
     const top = list.slice(0, 10);
-    saveScores(top);
+    setItem(STORE_KEY, JSON.stringify(top));
     return top.indexOf(entry);
   }
   function bestScore() {
@@ -148,59 +230,243 @@
     return list.length ? list[0].score : 0;
   }
 
+  // ---------- Language ----------
+  const STRINGS = {
+    en: {
+      title: 'Glowworm',
+      tagline: 'Hold to rise. Let go to fall.',
+      hint: 'The cave keeps closing in. Stay off the walls.',
+      play: 'Play', top10: 'Top 10', back: 'Back', again: 'Play again', save: 'Save',
+      crashed: 'Crashed!', newBest: 'New best!',
+      newTop: 'You made the top 10! Enter your name:', namePh: 'Your name', anon: 'Anonymous',
+      empty: 'No scores yet. Be the first.',
+      best: 'Best', paused: 'Paused', resume: 'Tap to continue',
+      lang: 'Suomeksi', tribute: 'A tribute to SFCave', sound: 'Sound',
+    },
+    fi: {
+      title: 'Kiiltomato',
+      tagline: 'Pidä pohjassa, niin mato nousee. Päästä irti, niin se laskee.',
+      hint: 'Luola kapenee koko ajan. Älä osu seiniin.',
+      play: 'Pelaa', top10: 'Top 10', back: 'Takaisin', again: 'Uudestaan', save: 'Tallenna',
+      crashed: 'Törmäsit!', newBest: 'Uusi ennätys!',
+      newTop: 'Pääsit top 10 -listalle! Kirjoita nimesi:', namePh: 'Nimesi', anon: 'Nimetön',
+      empty: 'Ei vielä tuloksia. Ole ensimmäinen.',
+      best: 'Ennätys', paused: 'Tauko', resume: 'Napauta jatkaaksesi',
+      lang: 'In English', tribute: 'Kunnianosoitus SFCave-pelille', sound: 'Äänet',
+    },
+  };
+  let lang = getItem(LANG_KEY) === 'fi' ? 'fi' : 'en';
+  const t = key => STRINGS[lang][key];
+
+  function applyLang() {
+    document.documentElement.lang = lang;
+    document.title = t('title');
+    document.querySelectorAll('[data-t]').forEach(el => { el.textContent = t(el.dataset.t); });
+    document.querySelectorAll('[data-tp]').forEach(el => { el.placeholder = t(el.dataset.tp); });
+    $('muteBtn').setAttribute('aria-label', t('sound'));
+    updateBest();
+  }
+
+  // ---------- Sound (Web Audio, all synthesized) ----------
+  const Sound = (() => {
+    let ac = null, master, ambGain, thrustGain, thrustFilter, echo, noiseBuf;
+    let muted = getItem(MUTE_KEY) === '1';
+
+    function init() {
+      if (ac) { if (ac.state === 'suspended' && !document.hidden) ac.resume(); return; }
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      ac = new AC();
+      master = ac.createGain();
+      master.gain.value = muted ? 0 : 0.9;
+      master.connect(ac.destination);
+
+      noiseBuf = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate);
+      const data = noiseBuf.getChannelData(0);
+      for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+
+      // Cave echo bus
+      echo = ac.createDelay(1);
+      echo.delayTime.value = 0.23;
+      const fb = ac.createGain(); fb.gain.value = 0.38;
+      const echoLp = ac.createBiquadFilter(); echoLp.type = 'lowpass'; echoLp.frequency.value = 2200;
+      echo.connect(echoLp); echoLp.connect(fb); fb.connect(echo); echoLp.connect(master);
+
+      // Ambient drone with slowly breathing filter
+      ambGain = ac.createGain(); ambGain.gain.value = 0;
+      const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 380;
+      lp.connect(ambGain); ambGain.connect(master);
+      [[55, 'sine', 0.5], [82.4, 'sine', 0.35], [110.6, 'triangle', 0.12]].forEach(([f, type, v]) => {
+        const o = ac.createOscillator(); o.type = type; o.frequency.value = f;
+        const g = ac.createGain(); g.gain.value = v;
+        o.connect(g); g.connect(lp); o.start();
+      });
+      const lfo = ac.createOscillator(); lfo.frequency.value = 0.07;
+      const lfoAmt = ac.createGain(); lfoAmt.gain.value = 160;
+      lfo.connect(lfoAmt); lfoAmt.connect(lp.frequency); lfo.start();
+      const air = ac.createBufferSource(); air.buffer = noiseBuf; air.loop = true;
+      const airBp = ac.createBiquadFilter(); airBp.type = 'bandpass'; airBp.frequency.value = 450; airBp.Q.value = 0.6;
+      const airG = ac.createGain(); airG.gain.value = 0.1;
+      air.connect(airBp); airBp.connect(airG); airG.connect(ambGain); air.start();
+
+      // Thrust: filtered noise "whoosh", gain follows the finger
+      const th = ac.createBufferSource(); th.buffer = noiseBuf; th.loop = true;
+      thrustFilter = ac.createBiquadFilter(); thrustFilter.type = 'bandpass'; thrustFilter.frequency.value = 600; thrustFilter.Q.value = 1.4;
+      thrustGain = ac.createGain(); thrustGain.gain.value = 0;
+      th.connect(thrustFilter); thrustFilter.connect(thrustGain); thrustGain.connect(master); th.start();
+    }
+
+    function tone(freq, at, dur, { type = 'sine', vol = 0.15, slideTo = 0, send = 0.4 } = {}) {
+      if (!ac) return;
+      const o = ac.createOscillator(), g = ac.createGain();
+      o.type = type; o.frequency.setValueAtTime(freq, at);
+      if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, at + dur);
+      g.gain.setValueAtTime(0.0001, at);
+      g.gain.exponentialRampToValueAtTime(vol, at + 0.012);
+      g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+      o.connect(g); g.connect(master);
+      if (send) { const s = ac.createGain(); s.gain.value = send; g.connect(s); s.connect(echo); }
+      o.start(at); o.stop(at + dur + 0.05);
+    }
+
+    return {
+      init,
+      get muted() { return muted; },
+      setMuted(m) {
+        muted = m;
+        setItem(MUTE_KEY, m ? '1' : '0');
+        if (ac) master.gain.setTargetAtTime(m ? 0 : 0.9, ac.currentTime, 0.05);
+      },
+      mood(level) { if (ac) ambGain.gain.setTargetAtTime(level, ac.currentTime, 0.8); },
+      thrust(on, vy) {
+        if (!ac) return;
+        const now = ac.currentTime;
+        thrustGain.gain.setTargetAtTime(on ? 0.07 : 0, now, on ? 0.03 : 0.09);
+        thrustFilter.frequency.setTargetAtTime(Math.max(300, Math.min(1500, 650 - vy * 0.9)), now, 0.06);
+      },
+      click() { if (ac) tone(720, ac.currentTime, 0.07, { type: 'triangle', vol: 0.08, send: 0.15 }); },
+      chime() {
+        if (!ac) return;
+        const n = ac.currentTime;
+        tone(987.8, n, 0.5, { vol: 0.12 });
+        tone(1480, n + 0.09, 0.7, { vol: 0.1 });
+      },
+      fanfare() {
+        if (!ac) return;
+        const n = ac.currentTime;
+        [523.3, 659.3, 784, 1046.5].forEach((f, i) => tone(f, n + i * 0.1, 0.45, { type: 'triangle', vol: 0.12 }));
+      },
+      crash() {
+        if (!ac) return;
+        const n = ac.currentTime;
+        const src = ac.createBufferSource(); src.buffer = noiseBuf;
+        const f = ac.createBiquadFilter(); f.type = 'lowpass';
+        f.frequency.setValueAtTime(2600, n); f.frequency.exponentialRampToValueAtTime(90, n + 0.7);
+        const g = ac.createGain();
+        g.gain.setValueAtTime(0.6, n); g.gain.exponentialRampToValueAtTime(0.0001, n + 0.8);
+        const s = ac.createGain(); s.gain.value = 0.5;
+        src.connect(f); f.connect(g); g.connect(master); g.connect(s); s.connect(echo);
+        src.start(n); src.stop(n + 0.9);
+        tone(120, n, 0.5, { vol: 0.5, slideTo: 32, send: 0.2 });
+        tone(392, n + 0.05, 0.6, { type: 'triangle', vol: 0.06, slideTo: 196 });
+        thrustGain.gain.setTargetAtTime(0, n, 0.02);
+      },
+      suspend() { if (ac && ac.state === 'running') ac.suspend(); },
+      resume() { if (ac && ac.state === 'suspended') ac.resume(); },
+    };
+  })();
+
   // ---------- Canvas ----------
-  const canvas = document.getElementById('game');
+  const canvas = $('game');
   const ctx = canvas.getContext('2d');
-  // Pelimaailma on aina 1000 yksikköä korkea, leveys riippuu näytön muodosta.
-  const WORLD_H = 1000;
-  let worldW = 1600, scale = 1, dpr = 1;
+  const WORLD_H = 1000;        // the world is always 1000 units tall; width follows the screen
+  let worldW = 1600, scale = 1;
 
   function resize() {
-    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
     const w = canvas.clientWidth || window.innerWidth, h = canvas.clientHeight || window.innerHeight;
     canvas.width = Math.round(w * dpr);
     canvas.height = Math.round(h * dpr);
     scale = canvas.height / WORLD_H;
     worldW = canvas.width / scale;
-    if (state !== 'playing') resetWorld();
+    if (state !== 'playing' && state !== 'paused') resetWorld();
+    seedMotes();
   }
 
-  // ---------- Pelin parametrit ----------
-  const SEG_W = 20;            // luolan palan leveys
-  const HEAD_R = 14;           // pään säde
-  const BODY_LEN = 260;        // vartalon pituus vaakasuunnassa
-  const GRAVITY = 1500;        // alaspäin kun ei paineta
-  const THRUST = 1500;         // ylöspäin kun painetaan
+  // Cached glow sprites, one per 10° of hue
+  const glowCache = new Map();
+  function glowSprite(h) {
+    h = ((Math.round(h / 10) * 10) % 360 + 360) % 360;
+    let c = glowCache.get(h);
+    if (!c) {
+      c = document.createElement('canvas');
+      c.width = c.height = 64;
+      const g = c.getContext('2d');
+      const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+      gr.addColorStop(0, `hsla(${h},100%,88%,1)`);
+      gr.addColorStop(0.22, `hsla(${h},100%,66%,0.55)`);
+      gr.addColorStop(1, `hsla(${h},100%,50%,0)`);
+      g.fillStyle = gr;
+      g.fillRect(0, 0, 64, 64);
+      glowCache.set(h, c);
+    }
+    return c;
+  }
+  function glow(h, x, y, r, a) {
+    ctx.globalAlpha = a;
+    ctx.drawImage(glowSprite(h), x - r, y - r, r * 2, r * 2);
+  }
+
+  // ---------- Game parameters ----------
+  const SEG_W = 20;
+  const HEAD_R = 14;
+  const BODY_LEN = 240;
+  const TRAIL_LEN = 900;       // the light trail behind the worm, a nod to SFCave
+  const GRAVITY = 1500;
+  const THRUST = 1500;
   const MAX_VY = 600;
   const START_GAP = 620;
   const MIN_GAP = 150;
   const START_SPEED = 380;
   const MAX_SPEED = 720;
+  const WORM_HUE = 100;
+  // Zone hues drift as you go deeper: teal, violet, magenta, amber, green, back to teal
+  const ZONE_HUES = [190, 262, 318, 385, 470, 550];
+  const ZONE_SECS = 30;
 
-  let state = 'menu';          // menu | playing | over
+  let state = 'menu';          // menu | playing | paused | over
   let pressing = false;
-  let cave = [];               // {x, top, bot}
-  let blocks = [];             // esteet luolan sisällä {x, y, w, h}
-  let trail = [];              // pään historia {x, y}
-  let particles = [];
+  let cave = [], blocks = [], trail = [], particles = [], rings = [], motes = [];
   let head, vy, distance, elapsed, speed, gap, center, centerVel, nextBlockAt;
-  let score = 0, lastTime = 0, shake = 0;
+  let score = 0, lastTime = 0, shake = 0, flash = 0, hue = ZONE_HUES[0];
 
   const headX = () => Math.min(worldW * 0.25, 420);
 
   function resetWorld() {
-    cave = []; blocks = []; trail = []; particles = [];
+    cave = []; blocks = []; trail = []; particles = []; rings = [];
     distance = 0; elapsed = 0; speed = START_SPEED; gap = START_GAP;
     center = WORLD_H / 2; centerVel = 0; nextBlockAt = 2500;
-    vy = 0; score = 0; shake = 0;
-    head = { x: headX(), y: WORLD_H / 2 };
+    vy = 0; score = 0; shake = 0; flash = 0; hue = ZONE_HUES[0];
+    head = { x: headX(), y: WORLD_H / 2, dead: false };
     for (let x = 0; x <= worldW + SEG_W * 2; x += SEG_W) pushSegment(x, true);
-    for (let x = head.x - BODY_LEN; x <= head.x; x += 4) trail.push({ x, y: head.y });
+    for (let x = head.x - TRAIL_LEN; x <= head.x; x += 6) trail.push({ x, y: head.y });
+  }
+
+  function seedMotes() {
+    motes = [];
+    const n = Math.round(worldW / 30);
+    for (let i = 0; i < n; i++) {
+      motes.push({ x: Math.random() * worldW, y: Math.random() * WORLD_H, z: 0.15 + Math.random() * 0.6, ph: Math.random() * 6.28, r: 1 + Math.random() * 2 });
+    }
+  }
+
+  function crystal() {
+    return { d: 14 + Math.random() * 26, n: 2 + (Math.random() * 2 | 0), len: 0.7 + Math.random() * 0.5, tilt: (Math.random() - 0.5) * 0.6, h: (Math.random() - 0.5) * 40 };
   }
 
   function pushSegment(x, calm) {
     if (!calm) {
-      // Luolan keskikohta vaeltaa satunnaisesti, jyrkemmin kun peli etenee.
+      // The cave centre wanders randomly, more wildly the longer you survive.
       const wild = 0.6 + Math.min(elapsed / 60, 1.4);
       centerVel += (Math.random() - 0.5) * 9 * wild;
       centerVel *= 0.94;
@@ -211,39 +477,47 @@
     const margin = 30 + gap / 2;
     if (center < margin) { center = margin; centerVel = Math.abs(centerVel); }
     if (center > WORLD_H - margin) { center = WORLD_H - margin; centerVel = -Math.abs(centerVel); }
-    // Pieni rosoisuus seiniin.
     const jag = calm ? 0 : 6;
     cave.push({
       x,
       top: center - gap / 2 + (Math.random() - 0.5) * jag,
       bot: center + gap / 2 + (Math.random() - 0.5) * jag,
+      r: Math.random(),
+      ct: Math.random() < 0.09 ? crystal() : null,
+      cb: Math.random() < 0.09 ? crystal() : null,
     });
 
-    // Esteitä luolan keskelle pelin edetessä.
+    // Obstacles inside the cave once the game gets going.
     if (!calm && distance + x > nextBlockAt && elapsed > 8) {
       const h = Math.min(60 + elapsed * 1.5, gap * 0.38);
       const room = gap - h - HEAD_R * 6;
       if (room > 0) {
         const y = center - gap / 2 + HEAD_R * 3 + Math.random() * room;
-        blocks.push({ x, y, w: SEG_W * 1.5, h });
+        blocks.push({ x, y, w: SEG_W * 1.6, h, seed: Math.random() });
       }
       nextBlockAt = distance + x + 900 + Math.random() * 900 - Math.min(elapsed * 6, 500);
     }
   }
 
   function caveAt(x) {
-    // Interpoloi seinien korkeus kohdassa x.
     for (let i = 0; i < cave.length - 1; i++) {
       const a = cave[i], b = cave[i + 1];
       if (x >= a.x && x <= b.x) {
-        const t = (x - a.x) / (b.x - a.x);
-        return { top: a.top + (b.top - a.top) * t, bot: a.bot + (b.bot - a.bot) * t };
+        const f = (x - a.x) / (b.x - a.x);
+        return { top: a.top + (b.top - a.top) * f, bot: a.bot + (b.bot - a.bot) * f };
       }
     }
     return { top: 0, bot: WORLD_H };
   }
 
-  // ---------- Ohjaus ----------
+  function zoneHue() {
+    const z = elapsed / ZONE_SECS;
+    const i = Math.floor(z) % (ZONE_HUES.length - 1);
+    const f = Math.max(0, Math.min(1, (z - Math.floor(z) - 0.85) / 0.15));
+    return (ZONE_HUES[i] + (ZONE_HUES[i + 1] - ZONE_HUES[i]) * f) % 360;
+  }
+
+  // ---------- Input ----------
   function press(e) {
     if (state !== 'playing') return;
     if (e) e.preventDefault();
@@ -255,48 +529,67 @@
   window.addEventListener('pointercancel', release);
   window.addEventListener('blur', release);
   window.addEventListener('keydown', e => {
-    if (e.code === 'Space' || e.code === 'ArrowUp') {
-      if (state === 'playing') { press(e); }
-      else if (state === 'menu' && !document.getElementById('menu').classList.contains('hidden')) { e.preventDefault(); startGame(); }
-    }
+    if (e.code !== 'Space' && e.code !== 'ArrowUp') return;
+    if (state === 'playing') press(e);
+    else if (state === 'paused') { e.preventDefault(); resumeGame(); }
+    else if (state === 'menu' && !menu.classList.contains('hidden')) { e.preventDefault(); startGame(); }
   });
   window.addEventListener('keyup', e => { if (e.code === 'Space' || e.code === 'ArrowUp') release(); });
   document.addEventListener('contextmenu', e => e.preventDefault());
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      if (state === 'playing') pauseGame();
+      Sound.suspend();
+    } else {
+      Sound.resume();
+    }
+  });
 
-  // ---------- Pelisilmukka ----------
+  // ---------- Simulation ----------
+  function autopilot() {
+    // Attract mode in the menu: steer toward the cave centre a little ahead.
+    const w = caveAt(head.x + 140);
+    pressing = head.y + vy * 0.25 > (w.top + w.bot) / 2;
+  }
+
   function update(dt) {
-    elapsed += dt;
-    // Kapealla (pysty)näytöllä hidastetaan, jotta eteenpäin ehtii nähdä.
+    const demo = state === 'menu';
+    if (!demo) elapsed += dt;
+    // On a narrow (portrait) screen slow down so there's time to see ahead.
     const viewFactor = Math.max(0.6, Math.min(1, worldW / 1400));
-    speed = Math.min(MAX_SPEED, START_SPEED + elapsed * 6) * viewFactor;
+    speed = Math.min(MAX_SPEED, START_SPEED + elapsed * 6) * viewFactor * (demo ? 0.8 : 1);
     gap = Math.max(MIN_GAP, START_GAP - elapsed * 7.5);
+    hue = zoneHue();
+    if (demo) autopilot();
+
+    const prevScore = score;
     score = Math.floor(elapsed * 10);
+    if (!demo && Math.floor(score / 100) > Math.floor(prevScore / 100)) milestone();
 
     vy += (pressing ? -THRUST : GRAVITY) * dt;
     vy = Math.max(-MAX_VY, Math.min(MAX_VY, vy));
     head.y += vy * dt;
+    if (!demo) Sound.thrust(pressing, vy);
 
     const dx = speed * dt;
     distance += dx;
     for (const s of cave) s.x -= dx;
     for (const b of blocks) b.x -= dx;
-    for (const t of trail) t.x -= dx;
+    for (const p of trail) p.x -= dx;
     for (const p of particles) p.x -= dx;
+    for (const r of rings) r.x -= dx;
 
-    while (cave.length && cave[1] && cave[1].x < -SEG_W) cave.shift();
+    while (cave.length > 2 && cave[1].x < -SEG_W) cave.shift();
     while (cave[cave.length - 1].x < worldW + SEG_W * 2) pushSegment(cave[cave.length - 1].x + SEG_W, false);
-    blocks = blocks.filter(b => b.x + b.w > -10);
+    blocks = blocks.filter(b => b.x + b.w > -40);
 
     trail.push({ x: head.x, y: head.y });
-    while (trail.length && trail[0].x < head.x - BODY_LEN) trail.shift();
+    while (trail.length > 2 && trail[1].x < head.x - TRAIL_LEN) trail.shift();
 
-    // Savuvana hännästä
-    if (Math.random() < 0.6) {
-      particles.push({ x: head.x - 6, y: head.y, vx: -40, vy: (Math.random() - 0.5) * 30, life: 0.6, max: 0.6, r: 3 + Math.random() * 3, c: 'smoke' });
+    if (pressing && Math.random() < 0.7) {
+      particles.push({ x: head.x - BODY_LEN, y: trailY(head.x - BODY_LEN) + (Math.random() - 0.5) * 8, vx: -30 - Math.random() * 40, vy: 40 + Math.random() * 60, life: 0.8, max: 0.8, r: 6 + Math.random() * 6, h: WORM_HUE });
     }
-    updateParticles(dt);
 
-    // Törmäystarkistus
     const w = caveAt(head.x);
     let hit = head.y - HEAD_R < w.top || head.y + HEAD_R > w.bot || head.y < 0 || head.y > WORLD_H;
     if (!hit) {
@@ -306,100 +599,170 @@
         if ((cx - head.x) ** 2 + (cy - head.y) ** 2 < HEAD_R * HEAD_R) { hit = true; break; }
       }
     }
-    if (hit) gameOver();
+    if (hit) demo ? resetWorld() : gameOver();
   }
 
-  function updateParticles(dt) {
+  function updateFx(dt) {
     for (const p of particles) {
       p.x += p.vx * dt; p.y += p.vy * dt; p.life -= dt;
-      if (p.c === 'spark') p.vy += 900 * dt;
+      if (p.spark) { p.vy += 700 * dt; p.vx *= 0.985; }
     }
     particles = particles.filter(p => p.life > 0);
+    for (const r of rings) { r.r += 420 * dt; r.life -= dt; }
+    rings = rings.filter(r => r.life > 0);
+    const drift = (state === 'playing' || state === 'menu') ? speed : 40;
+    for (const m of motes) {
+      m.x -= drift * m.z * dt;
+      m.ph += dt;
+      m.y += Math.sin(m.ph * 0.8) * 8 * dt;
+      if (m.x < -10) { m.x = worldW + 10; m.y = Math.random() * WORLD_H; }
+    }
+    shake = Math.max(0, shake - 50 * dt);
+    flash = Math.max(0, flash - 2.5 * dt);
   }
 
-  function draw() {
+  function milestone() {
+    rings.push({ x: head.x, y: head.y, r: HEAD_R, life: 0.7, max: 0.7 });
+    Sound.chime();
+    scoreEl.classList.remove('bump');
+    void scoreEl.offsetWidth;
+    scoreEl.classList.add('bump');
+  }
+
+  // ---------- Rendering ----------
+  function ridge(x, s) {
+    return 140 + 70 * Math.sin(x * 0.0037 + s) + 40 * Math.sin(x * 0.011 + s * 2.3) + 14 * Math.sin(x * 0.031 + s * 5.1);
+  }
+
+  function drawBackground() {
     const W = worldW;
-    ctx.setTransform(scale, 0, 0, scale, 0, 0);
-    if (shake > 0) ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
-
-    // Tausta
     const bg = ctx.createLinearGradient(0, 0, 0, WORLD_H);
-    bg.addColorStop(0, '#16202b'); bg.addColorStop(1, '#0d141c');
+    bg.addColorStop(0, `hsl(${hue}, 45%, 6%)`);
+    bg.addColorStop(0.5, `hsl(${hue}, 50%, 10%)`);
+    bg.addColorStop(1, `hsl(${hue}, 45%, 6%)`);
     ctx.fillStyle = bg;
-    ctx.fillRect(-20, -20, W + 40, WORLD_H + 40);
+    ctx.fillRect(-30, -30, W + 60, WORLD_H + 60);
 
-    // Taustan parallaksipisteet
-    ctx.fillStyle = 'rgba(255,255,255,0.04)';
-    const off = (distance * 0.3) % 200;
-    for (let x = -off; x < W + 200; x += 200) {
-      for (let y = 60; y < WORLD_H; y += 170) {
-        ctx.beginPath(); ctx.arc(x + ((y * 7) % 90), y, 3, 0, Math.PI * 2); ctx.fill();
+    // Two parallax layers of distant rock
+    [[0.18, 1.3, 11, 1.0], [0.42, 4.7, 15, 0.75]].forEach(([par, seed, light, amp]) => {
+      const off = distance * par;
+      ctx.fillStyle = `hsl(${hue}, 35%, ${light}%)`;
+      for (const dir of [1, -1]) {
+        ctx.beginPath();
+        const edge = dir === 1 ? -30 : WORLD_H + 30;
+        ctx.moveTo(-30, edge);
+        for (let x = -30; x <= W + 60; x += 30) {
+          const h = ridge(x + off, seed + (dir === 1 ? 0 : 9)) * amp;
+          ctx.lineTo(x, dir === 1 ? h : WORLD_H - h);
+        }
+        ctx.lineTo(W + 60, edge);
+        ctx.closePath();
+        ctx.fill();
       }
-    }
-
-    // Seinät
-    const hue = 25 + Math.min(elapsed, 120) * 1.5; // värisävy muuttuu ajan myötä
-    const rock = ctx.createLinearGradient(0, 0, 0, WORLD_H);
-    rock.addColorStop(0, `hsl(${hue}, 35%, 30%)`);
-    rock.addColorStop(0.5, `hsl(${hue}, 40%, 20%)`);
-    rock.addColorStop(1, `hsl(${hue}, 35%, 30%)`);
-    ctx.fillStyle = rock;
-    ctx.beginPath();
-    ctx.moveTo(cave[0].x, -20);
-    for (const s of cave) ctx.lineTo(s.x, s.top);
-    ctx.lineTo(cave[cave.length - 1].x, -20);
-    ctx.closePath(); ctx.fill();
-    ctx.beginPath();
-    ctx.moveTo(cave[0].x, WORLD_H + 20);
-    for (const s of cave) ctx.lineTo(s.x, s.bot);
-    ctx.lineTo(cave[cave.length - 1].x, WORLD_H + 20);
-    ctx.closePath(); ctx.fill();
-
-    // Seinien reunaviiva
-    ctx.strokeStyle = `hsl(${hue}, 60%, 55%)`;
-    ctx.lineWidth = 4; ctx.lineJoin = 'round';
-    ctx.beginPath(); cave.forEach((s, i) => i ? ctx.lineTo(s.x, s.top) : ctx.moveTo(s.x, s.top)); ctx.stroke();
-    ctx.beginPath(); cave.forEach((s, i) => i ? ctx.lineTo(s.x, s.bot) : ctx.moveTo(s.x, s.bot)); ctx.stroke();
-
-    // Esteet
-    for (const b of blocks) {
-      ctx.fillStyle = `hsl(${hue}, 40%, 26%)`;
-      ctx.fillRect(b.x, b.y, b.w, b.h);
-      ctx.strokeStyle = `hsl(${hue}, 60%, 55%)`;
-      ctx.strokeRect(b.x, b.y, b.w, b.h);
-    }
-
-    // Hiukkaset
-    for (const p of particles) {
-      const a = p.life / p.max;
-      ctx.fillStyle = p.c === 'spark' ? `rgba(255, ${150 + 100 * a | 0}, 80, ${a})` : `rgba(180, 220, 170, ${a * 0.25})`;
-      ctx.beginPath(); ctx.arc(p.x, p.y, p.r * (p.c === 'smoke' ? 2 - a : 1), 0, Math.PI * 2); ctx.fill();
-    }
-
-    drawWorm();
+    });
   }
 
-  function drawWorm() {
-    if (state === 'over' && head.dead) return;
-    // Vartalo: ympyröitä pään historiaa pitkin, ohenee häntää kohti.
-    const n = 22;
-    for (let i = n; i >= 0; i--) {
-      const x = head.x - (BODY_LEN * i) / n;
-      const y = trailY(x);
-      const t = 1 - i / n;
-      const r = HEAD_R * (0.45 + 0.55 * t);
-      ctx.fillStyle = i % 2 ? '#5fc24f' : '#7ee36b';
-      ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+  function wallPath(side, inset) {
+    // side: 'top' | 'bot'; inset pushes the line deeper into the rock
+    const first = cave[0], last = cave[cave.length - 1];
+    const edge = side === 'top' ? -30 : WORLD_H + 30;
+    const dir = side === 'top' ? -1 : 1;
+    ctx.beginPath();
+    ctx.moveTo(first.x, edge);
+    for (const s of cave) ctx.lineTo(s.x, s[side] + dir * (inset ? inset + s.r * 10 : 0));
+    ctx.lineTo(last.x, edge);
+    ctx.closePath();
+  }
+
+  function edgeLine(side) {
+    ctx.beginPath();
+    cave.forEach((s, i) => i ? ctx.lineTo(s.x, s[side]) : ctx.moveTo(s.x, s[side]));
+  }
+
+  function shardPath(x, y, c, dir, k) {
+    // A crystal anchored inside the rock, pointing toward the open cave but never past the edge.
+    const spread = (k - (c.n - 1) / 2) * 0.45 + c.tilt;
+    const L = (c.d - 3) * (k === Math.floor(c.n / 2) ? 1 : c.len);
+    const tx = x + Math.sin(spread) * L, ty = y + dir * Math.cos(spread) * L;
+    const bw = 4 + c.d * 0.12;
+    const nx = Math.cos(spread) * bw, ny = -dir * Math.sin(spread) * bw;
+    ctx.beginPath();
+    ctx.moveTo(x + nx, y + ny);
+    ctx.lineTo(tx, ty);
+    ctx.lineTo(x - nx, y - ny);
+    ctx.lineTo(x - Math.sin(spread) * L * 0.25, y - dir * Math.cos(spread) * L * 0.25);
+    ctx.closePath();
+  }
+
+  function forEachCrystal(fn) {
+    for (const s of cave) {
+      if (s.ct) fn(s.x, s.top - s.ct.d, s.ct, 1);
+      if (s.cb) fn(s.x, s.bot + s.cb.d, s.cb, -1);
     }
-    // Pää
-    ctx.fillStyle = '#9af08a';
-    ctx.beginPath(); ctx.arc(head.x, head.y, HEAD_R + 2, 0, Math.PI * 2); ctx.fill();
-    // Silmä
-    const look = Math.max(-1, Math.min(1, vy / MAX_VY));
-    ctx.fillStyle = '#fff';
-    ctx.beginPath(); ctx.arc(head.x + 5, head.y - 4, 5.5, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#111';
-    ctx.beginPath(); ctx.arc(head.x + 7, head.y - 4 + look * 2.5, 2.8, 0, Math.PI * 2); ctx.fill();
+  }
+
+  function drawWalls() {
+    for (const side of ['top', 'bot']) {
+      // Lit rim near the edge, darker rock behind it
+      wallPath(side, 0);
+      ctx.fillStyle = `hsl(${hue}, 32%, 30%)`;
+      ctx.fill();
+      wallPath(side, 14);
+      ctx.fillStyle = `hsl(${hue}, 34%, 19%)`;
+      ctx.fill();
+      wallPath(side, 55);
+      ctx.fillStyle = `hsl(${hue}, 38%, 12%)`;
+      ctx.fill();
+    }
+    forEachCrystal((x, y, c, dir) => {
+      for (let k = 0; k < c.n; k++) {
+        shardPath(x, y, c, dir, k);
+        ctx.fillStyle = `hsl(${hue + 40 + c.h}, 85%, ${55 + k * 8}%)`;
+        ctx.fill();
+      }
+    });
+    ctx.lineJoin = 'round';
+    for (const side of ['top', 'bot']) {
+      edgeLine(side);
+      ctx.strokeStyle = `hsla(${hue + 20}, 90%, 60%, 0.16)`;
+      ctx.lineWidth = 12;
+      ctx.stroke();
+      ctx.strokeStyle = `hsla(${hue + 20}, 95%, 72%, 0.9)`;
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+    }
+  }
+
+  function roundRect(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  function drawBlocks() {
+    for (const b of blocks) {
+      roundRect(b.x, b.y, b.w, b.h, 8);
+      const g = ctx.createLinearGradient(b.x, 0, b.x + b.w, 0);
+      g.addColorStop(0, `hsl(${hue}, 34%, 34%)`);
+      g.addColorStop(1, `hsl(${hue}, 36%, 16%)`);
+      ctx.fillStyle = g;
+      ctx.fill();
+      ctx.strokeStyle = `hsla(${hue + 20}, 95%, 72%, 0.85)`;
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+      // facet line
+      ctx.strokeStyle = `hsla(${hue + 20}, 80%, 70%, 0.25)`;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(b.x + b.w * 0.3, b.y + 6);
+      ctx.lineTo(b.x + b.w * (0.5 + b.seed * 0.3), b.y + b.h * 0.55);
+      ctx.lineTo(b.x + b.w * 0.35, b.y + b.h - 6);
+      ctx.stroke();
+    }
   }
 
   function trailY(x) {
@@ -408,76 +771,226 @@
     for (let i = trail.length - 1; i > 0; i--) {
       const a = trail[i - 1], b = trail[i];
       if (x >= a.x) {
-        const t = b.x === a.x ? 0 : (x - a.x) / (b.x - a.x);
-        return a.y + (b.y - a.y) * t;
+        const f = b.x === a.x ? 0 : (x - a.x) / (b.x - a.x);
+        return a.y + (b.y - a.y) * f;
       }
     }
     return head.y;
   }
 
-  function loop(t) {
-    const dt = Math.min(0.033, (t - lastTime) / 1000 || 0);
-    lastTime = t;
-    if (state === 'playing') {
-      update(dt);
-      scoreEl.textContent = score;
-    } else {
-      updateParticles(dt);
-      shake = Math.max(0, shake - 60 * dt);
+  function drawTrail() {
+    if (trail.length < 2) return;
+    const g = ctx.createLinearGradient(head.x - TRAIL_LEN, 0, head.x - BODY_LEN * 0.6, 0);
+    g.addColorStop(0, `hsla(${WORM_HUE}, 100%, 70%, 0)`);
+    g.addColorStop(1, `hsla(${WORM_HUE}, 100%, 72%, 0.55)`);
+    ctx.strokeStyle = g;
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    let started = false;
+    for (const p of trail) {
+      if (p.x > head.x - BODY_LEN * 0.6) break;
+      started ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y);
+      started = true;
     }
+    ctx.stroke();
+  }
+
+  function drawWorm() {
+    const n = 22;
+    const pts = [];
+    for (let i = n; i >= 0; i--) {
+      const x = head.x - (BODY_LEN * i) / n;
+      pts.push({ x, y: trailY(x), f: 1 - i / n });
+    }
+    // Body, tail first so the head overlaps
+    for (const p of pts) {
+      const r = HEAD_R * (0.5 + 0.5 * p.f);
+      ctx.fillStyle = `hsl(${WORM_HUE + 20 - p.f * 20}, 70%, ${26 + p.f * 12}%)`;
+      ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = `hsla(${WORM_HUE}, 100%, 75%, ${0.35 + p.f * 0.4})`;
+      ctx.beginPath(); ctx.arc(p.x - r * 0.15, p.y - r * 0.35, r * 0.42, 0, Math.PI * 2); ctx.fill();
+    }
+    // Head
+    const look = Math.max(-1, Math.min(1, vy / MAX_VY));
+    ctx.strokeStyle = `hsl(${WORM_HUE}, 80%, 60%)`;
+    ctx.lineWidth = 2;
+    for (const k of [-1, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(head.x + 2, head.y - 10);
+      ctx.quadraticCurveTo(head.x + 4 + k * 3, head.y - 26, head.x + 12 + k * 5, head.y - 28 + look * 3);
+      ctx.stroke();
+    }
+    ctx.fillStyle = `hsl(${WORM_HUE}, 75%, 46%)`;
+    ctx.beginPath(); ctx.arc(head.x, head.y, HEAD_R + 2, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = `hsl(${WORM_HUE}, 100%, 78%)`;
+    ctx.beginPath(); ctx.arc(head.x - 3, head.y - 6, 6, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#f4fff0';
+    ctx.beginPath(); ctx.arc(head.x + 6, head.y - 3, 5.5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#0a1a0c';
+    ctx.beginPath(); ctx.arc(head.x + 8, head.y - 3 + look * 2.5, 2.8, 0, Math.PI * 2); ctx.fill();
+    return pts;
+  }
+
+  function drawLighting() {
+    // Darkness everywhere except around the worm's own light
+    const R = Math.max(worldW, WORLD_H);
+    const lx = head.dead ? head.x : head.x - 40;
+    const g = ctx.createRadialGradient(lx, head.y, 60, lx, head.y, R * 0.75);
+    g.addColorStop(0, 'rgba(1, 4, 8, 0)');
+    g.addColorStop(0.3, 'rgba(1, 4, 8, 0.18)');
+    g.addColorStop(1, 'rgba(1, 4, 8, 0.7)');
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = g;
+    ctx.fillRect(-30, -30, worldW + 60, WORLD_H + 60);
+  }
+
+  function draw() {
+    ctx.setTransform(scale, 0, 0, scale, 0, 0);
+    if (shake > 0) ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
+
+    drawBackground();
+
+    ctx.globalCompositeOperation = 'lighter';
+    for (const m of motes) glow(hue + 30, m.x, m.y, m.r * 5, 0.25 + 0.2 * Math.sin(m.ph * 2));
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 1;
+
+    drawWalls();
+    drawBlocks();
+
+    ctx.globalCompositeOperation = 'lighter';
+    if (!head.dead) drawTrail();
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 1;
+
+    let pts = null;
+    if (!head.dead) pts = drawWorm();
+
+    drawLighting();
+
+    // Light sources drawn over the darkness so they shine
+    ctx.globalCompositeOperation = 'lighter';
+    forEachCrystal((x, y, c, dir) => glow(hue + 40 + c.h, x, y + dir * c.d * 0.5, 34 + c.d, 0.55));
+    for (const b of blocks) glow(hue + 20, b.x + b.w / 2, b.y + b.h / 2, Math.max(b.w, b.h) * 0.9, 0.3);
+    if (pts) {
+      for (let i = 0; i < pts.length; i += 3) glow(WORM_HUE, pts[i].x, pts[i].y, 26 + pts[i].f * 16, 0.22);
+      const tail = pts[0];
+      glow(WORM_HUE - 30, tail.x, tail.y, 46, 0.9);   // glowworms glow at the tail
+      glow(WORM_HUE, head.x, head.y, 110, 0.35);
+      glow(WORM_HUE, head.x, head.y, 34, 0.5);
+      for (const k of [-1, 1]) glow(WORM_HUE, head.x + 12 + k * 5, head.y - 28, 10, 0.9);
+    }
+    for (const p of particles) {
+      const a = p.life / p.max;
+      glow(p.h, p.x, p.y, p.r * (p.spark ? 1.5 : 1 + (1 - a)), a * (p.spark ? 1 : 0.45));
+    }
+    ctx.globalAlpha = 1;
+    for (const r of rings) {
+      ctx.strokeStyle = `hsla(${WORM_HUE}, 100%, 75%, ${r.life / r.max})`;
+      ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(r.x, r.y, r.r, 0, Math.PI * 2); ctx.stroke();
+    }
+    ctx.globalCompositeOperation = 'source-over';
+
+    if (flash > 0) {
+      ctx.globalAlpha = Math.min(1, flash) * 0.6;
+      ctx.fillStyle = `hsl(${WORM_HUE}, 100%, 85%)`;
+      ctx.fillRect(-30, -30, worldW + 60, WORLD_H + 60);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  function loop(time) {
+    const dt = Math.min(0.033, (time - lastTime) / 1000 || 0);
+    lastTime = time;
+    if (state === 'playing' || state === 'menu') update(dt);
+    if (state === 'playing') scoreEl.textContent = score;
+    if (state !== 'paused') updateFx(dt);
     draw();
     requestAnimationFrame(loop);
   }
 
-  // ---------- Tilat ja käyttöliittymä ----------
-  const $ = id => document.getElementById(id);
-  const scoreEl = $('score'), bestEl = $('best'), hud = $('hud');
-  const menu = $('menu'), over = $('over'), scoresView = $('scores');
+  // ---------- States & UI ----------
+  const scoreEl = $('score'), bestEl = $('best'), muteBtn = $('muteBtn');
+  const menu = $('menu'), over = $('over'), scoresView = $('scores'), pauseView = $('pause');
   const nameForm = $('nameForm'), nameInput = $('nameInput'), overButtons = $('overButtons');
-  let pendingScore = 0, highlightIndex = -1;
+  let pendingScore = 0, highlightIndex = -1, overTimer = 0;
 
-  function show(el) { [menu, over, scoresView].forEach(o => o.classList.toggle('hidden', o !== el)); }
+  function show(el) { [menu, over, scoresView, pauseView].forEach(o => o.classList.toggle('hidden', o !== el)); }
+  function updateBest() { const b = bestScore(); bestEl.textContent = b ? `${t('best')} ${b}` : ''; }
 
   function startGame() {
+    Sound.init();
+    clearTimeout(overTimer);
     resetWorld();
     pressing = false;
     state = 'playing';
     show(null);
-    hud.hidden = false;
-    bestEl.textContent = 'Ennätys ' + bestScore();
+    scoreEl.hidden = false;
+    scoreEl.textContent = '0';
+    updateBest();
+    Sound.mood(0.09);
+  }
+
+  function pauseGame() {
+    state = 'paused';
+    pressing = false;
+    Sound.thrust(false, 0);
+    show(pauseView);
+  }
+  function resumeGame() {
+    Sound.init();
+    state = 'playing';
+    show(null);
   }
 
   function gameOver() {
     state = 'over';
     pressing = false;
     head.dead = true;
-    shake = 18;
-    for (let i = 0; i < 40; i++) {
-      const a = Math.random() * Math.PI * 2, v = 100 + Math.random() * 350;
-      particles.push({ x: head.x, y: head.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 0.9, max: 0.9, r: 3 + Math.random() * 3, c: 'spark' });
+    shake = 22;
+    flash = 0.6;
+    for (let i = 0; i < 60; i++) {
+      const a = Math.random() * Math.PI * 2, v = 120 + Math.random() * 420;
+      particles.push({ x: head.x, y: head.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 1.1, max: 1.1, r: 6 + Math.random() * 8, h: WORM_HUE + (Math.random() - 0.5) * 60, spark: true });
     }
+    // The body scatters into light too
+    for (let i = 0; i < 12; i++) {
+      const x = head.x - (BODY_LEN * i) / 12;
+      particles.push({ x, y: trailY(x), vx: (Math.random() - 0.5) * 120, vy: -60 - Math.random() * 80, life: 1.4, max: 1.4, r: 10, h: WORM_HUE, spark: true });
+    }
+    Sound.crash();
+    Sound.mood(0.03);
     if (navigator.vibrate) navigator.vibrate(150);
+
     pendingScore = score;
     $('finalScore').textContent = score;
+    const isBest = score > 0 && score > bestScore();
     const isTop = qualifies(score);
+    $('newBest').hidden = !isBest;
     nameForm.hidden = !isTop;
     overButtons.hidden = isTop;
-    // Pieni viive, ettei sormen nosto heti paina nappia.
-    setTimeout(() => {
+    // Short delay so lifting the finger doesn't hit a button straight away.
+    overTimer = setTimeout(() => {
       show(over);
+      if (isBest) Sound.fanfare();
       if (isTop) {
-        try { nameInput.value = localStorage.getItem(LAST_NAME_KEY) || ''; } catch {}
+        nameInput.value = getItem(LAST_NAME_KEY) || '';
         nameInput.focus();
         nameInput.select();
       }
-    }, 600);
+    }, 700);
   }
 
   function saveName() {
-    const name = (nameInput.value.trim() || 'Nimetön').slice(0, 16);
-    try { localStorage.setItem(LAST_NAME_KEY, name); } catch {}
+    const name = (nameInput.value.trim() || t('anon')).slice(0, 16);
+    setItem(LAST_NAME_KEY, name);
     highlightIndex = addScore(name, pendingScore);
     nameInput.blur();
+    updateBest();
     showScores();
   }
 
@@ -486,10 +999,10 @@
     const ol = $('scoreList');
     ol.innerHTML = '';
     if (!list.length) {
-      const li = document.createElement('div');
-      li.className = 'empty';
-      li.textContent = 'Ei vielä tuloksia.';
-      ol.appendChild(li);
+      const empty = document.createElement('div');
+      empty.className = 'empty';
+      empty.textContent = t('empty');
+      ol.appendChild(empty);
     }
     list.forEach((e, i) => {
       const li = document.createElement('li');
@@ -503,7 +1016,15 @@
     show(scoresView);
   }
 
-  function backToMenu() { state = 'menu'; hud.hidden = true; resetWorld(); show(menu); }
+  function backToMenu() {
+    state = 'menu';
+    scoreEl.hidden = true;
+    resetWorld();
+    show(menu);
+    Sound.mood(0.04);
+  }
+
+  function syncMute() { muteBtn.classList.toggle('muted', Sound.muted); }
 
   $('startBtn').addEventListener('click', startGame);
   $('scoresBtn').addEventListener('click', showScores);
@@ -512,9 +1033,23 @@
   $('scoresPlayBtn').addEventListener('click', startGame);
   $('scoresBackBtn').addEventListener('click', backToMenu);
   $('saveBtn').addEventListener('click', saveName);
+  $('langBtn').addEventListener('click', () => {
+    lang = lang === 'en' ? 'fi' : 'en';
+    setItem(LANG_KEY, lang);
+    applyLang();
+  });
+  pauseView.addEventListener('pointerdown', e => { e.preventDefault(); resumeGame(); });
+  muteBtn.addEventListener('click', () => { Sound.init(); Sound.setMuted(!Sound.muted); syncMute(); });
   nameInput.addEventListener('keydown', e => { if (e.key === 'Enter') saveName(); e.stopPropagation(); });
+  document.addEventListener('click', e => {
+    if (e.target.closest('button')) { Sound.init(); if (e.target.closest('button') !== muteBtn) Sound.click(); }
+  });
+  // Start the menu ambience on the first touch anywhere
+  document.addEventListener('pointerdown', () => { Sound.init(); if (state === 'menu') Sound.mood(0.04); }, { once: true });
 
   window.addEventListener('resize', resize);
+  applyLang();
+  syncMute();
   resize();
   requestAnimationFrame(loop);
 })();

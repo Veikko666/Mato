@@ -1,16 +1,23 @@
-# Mato luolassa
+# Glowworm / Kiiltomato
 
-Kosketusnäytölle tehty selainpeli (SFCave-/helikopteripelin henkeen). Mato kulkee luolassa,
-joka kapenee koko ajan.
+A one-touch cave flyer for phones, a tribute to the classic **SFCave**.
+A glowing worm flies through a dark cave that keeps getting narrower.
 
-- **Pidä sormi näytöllä** → mato nousee
-- **Päästä irti** → mato laskee
-- Tietokoneella toimii myös hiiri, välilyönti tai nuoli ylös.
+- **Hold** the screen → the worm rises
+- **Let go** → the worm falls
+- On a computer: mouse button, Space or Arrow Up.
 
-Pisteitä kertyy ajan mukaan (10 / sekunti). Peli päättyy, kun mato osuu seinään tai esteeseen.
-Top 10 -lista tallennetaan selaimen localStorageen.
+You score 10 points per second. The run ends when the worm hits a wall or an obstacle.
+The cave changes colour as you go deeper, and the top 10 list is stored in the browser (localStorage).
+English by default; switch to Finnish from the menu. All sounds are synthesized with Web Audio,
+so there are no asset files.
 
-## Pelaaminen
+## Playing
 
-Avaa `index.html` selaimessa. Peli on yksi tiedosto ilman riippuvuuksia, joten sen voi
-julkaista esim. GitHub Pagesissa.
+Open `index.html` in a browser. It is a single file with no build step, so it can be hosted
+as-is, e.g. on GitHub Pages.
+
+---
+
+**Suomeksi:** Pidä sormi näytöllä, niin mato nousee, ja päästä irti, niin se laskee. Väistä luolan
+seiniä ja esteitä. Kielen voi vaihtaa valikosta.
