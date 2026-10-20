@@ -7,7 +7,16 @@ A glowing worm flies through a dark cave that keeps getting narrower.
 - **Let go** → the worm falls
 - On a computer: mouse button, Space or Arrow Up.
 
-You score 10 points per second. The run ends when the worm hits a wall or an obstacle.
+You score 10 points per second, plus bonuses:
+
+- **Light orbs**: +20, or +40 for the ones hugging a wall.
+- **Close calls**: skim a wall or obstacle without touching it for +15.
+- **Multiplier**: every 4 orbs or close calls in a row raise it (up to ×5). It applies to everything,
+  and it runs out if you go 4 seconds without either.
+- **Your furthest**: a light gate marks where your longest run ended, and passing your best score
+  mid-run is announced.
+
+The run ends when the worm hits a wall or an obstacle.
 The cave changes colour as you go deeper, and the top 10 list is stored in the browser (localStorage).
 English by default; switch to Finnish from the menu. All sound, including the calm generative
 ambient soundtrack, is synthesized with Web Audio (music and sound can be toggled separately),

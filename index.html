@@ -46,6 +46,18 @@
     color: var(--text); text-shadow: 0 0 12px rgba(166, 255, 126, .55);
   }
   #score.bump { animation: bump .45s ease-out; }
+  .hud-left { display: flex; align-items: center; gap: 10px; }
+  #combo {
+    position: relative; overflow: hidden; padding: 3px 10px 5px; border-radius: 999px;
+    font-size: 18px; font-weight: 700; color: var(--ink); background: var(--glow);
+    box-shadow: 0 0 16px rgba(166,255,126,.6); font-variant-numeric: tabular-nums;
+  }
+  #combo i {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: rgba(8,32,10,.55);
+    transform-origin: left center;
+  }
+  #combo.pop { animation: bump .35s ease-out; }
+  .stats { font-size: 15px; font-variant-numeric: tabular-nums; }
   @keyframes bump { 0% { transform: scale(1.35); color: var(--glow); } 100% { transform: scale(1); } }
   .hud-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
   #best { color: var(--muted); font-weight: 600; font-size: 16px; font-variant-numeric: tabular-nums; }
@@ -131,7 +143,10 @@
 <canvas id="game"></canvas>
 
 <div id="hud">
-  <span id="score" hidden>0</span>
+  <div class="hud-left">
+    <span id="score" hidden>0</span>
+    <span id="combo" hidden>×2<i></i></span>
+  </div>
   <div class="hud-right">
     <span id="best"></span>
     <button class="icon-btn" id="musicBtn" type="button" aria-label="Music">
@@ -170,6 +185,7 @@
     <h2 data-t="crashed"></h2>
     <div class="score-big" id="finalScore">0</div>
     <span class="badge" id="newBest" hidden data-t="newBest"></span>
+    <p class="stats" id="stats"></p>
     <div id="nameForm" hidden>
       <p data-t="newTop"></p>
       <input id="nameInput" maxlength="16" autocomplete="off" data-tp="namePh">
@@ -244,7 +260,8 @@
     en: {
       title: 'Glowworm',
       tagline: 'Hold to rise. Let go to fall.',
-      hint: 'The cave keeps closing in. Stay off the walls.',
+      hint: 'The cave keeps closing in. Grab light orbs and skim the walls to build your multiplier.',
+      close: 'Close!', orbs: 'Orbs', closeCalls: 'Close calls', maxCombo: 'Best multiplier', furthest: 'Your furthest',
       play: 'Play', top10: 'Top 10', back: 'Back', again: 'Play again', save: 'Save',
       crashed: 'Crashed!', newBest: 'New best!',
       newTop: 'You made the top 10! Enter your name:', namePh: 'Your name', anon: 'Anonymous',
@@ -255,7 +272,8 @@
     fi: {
       title: 'Kiiltomato',
       tagline: 'Pidä pohjassa, niin mato nousee. Päästä irti, niin se laskee.',
-      hint: 'Luola kapenee koko ajan. Älä osu seiniin.',
+      hint: 'Luola kapenee koko ajan. Kerää valopalloja ja liu\'u läheltä seiniä, niin kerroin kasvaa.',
+      close: 'Läheltä piti!', orbs: 'Valopallot', closeCalls: 'Läheltä piti', maxCombo: 'Paras kerroin', furthest: 'Pisin matkasi',
       play: 'Pelaa', top10: 'Top 10', back: 'Takaisin', again: 'Uudestaan', save: 'Tallenna',
       crashed: 'Törmäsit!', newBest: 'Uusi ennätys!',
       newTop: 'Pääsit top 10 -listalle! Kirjoita nimesi:', namePh: 'Nimesi', anon: 'Nimetön',
@@ -480,6 +498,33 @@
         tone(987.8, n, 0.5, { vol: 0.12 });
         tone(1480, n + 0.09, 0.7, { vol: 0.1 });
       },
+      orb(level) {
+        if (!ac) return;
+        const scale = [0, 2, 4, 7, 9, 12, 14, 16, 19, 21, 24];
+        const m = 76 + scale[Math.min(level, scale.length - 1)];
+        tone(mtof(m), ac.currentTime, 0.35, { type: 'triangle', vol: 0.11, send: 0.35 });
+        tone(mtof(m + 12), ac.currentTime + 0.04, 0.25, { vol: 0.04, send: 0.3 });
+      },
+      near() {
+        if (!ac) return;
+        const n = ac.currentTime;
+        const src = ac.createBufferSource(); src.buffer = noiseBuf;
+        const f = ac.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 2;
+        f.frequency.setValueAtTime(2200, n); f.frequency.exponentialRampToValueAtTime(5000, n + 0.15);
+        const g = ac.createGain();
+        g.gain.setValueAtTime(0.0001, n); g.gain.exponentialRampToValueAtTime(0.12, n + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, n + 0.18);
+        src.connect(f); f.connect(g); g.connect(master);
+        src.start(n, Math.random()); src.stop(n + 0.2);
+        tone(1760, n + 0.03, 0.12, { vol: 0.04, send: 0.2 });
+      },
+      levelUp(mult) {
+        if (!ac) return;
+        const n = ac.currentTime, base = 64 + mult * 2;
+        tone(mtof(base), n, 0.25, { type: 'triangle', vol: 0.08 });
+        tone(mtof(base + 7), n + 0.08, 0.35, { type: 'triangle', vol: 0.08 });
+      },
+      comboLost() { if (ac) tone(520, ac.currentTime, 0.35, { type: 'triangle', vol: 0.06, slideTo: 260, send: 0.2 }); },
       fanfare() {
         if (!ac) return;
         const n = ac.currentTime;
@@ -568,6 +613,16 @@
   let cave = [], blocks = [], trail = [], particles = [], rings = [], motes = [];
   let head, vy, distance, elapsed, speed, gap, center, centerVel, nextBlockAt;
   let score = 0, lastTime = 0, shake = 0, flash = 0, hue = ZONE_HUES[0];
+  // Scoring: time points and bonuses are all scaled by the multiplier
+  const COMBO_TIME = 4;        // seconds before an idle combo runs out
+  const NEAR_DIST = 16;        // clearance that counts as a close call
+  const BEST_DIST_KEY = 'glowworm-best-dist';
+  let orbs = [], popups = [], orbQueue = null, nextOrbAt = 0;
+  let points = 0, combo = 0, comboTimer = 0, nearArmed = true, nearCooldown = 0;
+  let stats = { orbs: 0, close: 0, maxMult: 1 };
+  let runBest = 0, passedBest = false, passedFar = false;
+  let bestDist = Number(getItem(BEST_DIST_KEY)) || 0;
+  const mult = () => Math.min(5, 1 + Math.floor(combo / 4));
 
   const headX = () => Math.min(worldW * 0.25, 420);
 
@@ -576,6 +631,10 @@
     distance = 0; elapsed = 0; speed = START_SPEED; gap = START_GAP;
     center = WORLD_H / 2; centerVel = 0; nextBlockAt = 2500;
     vy = 0; score = 0; shake = 0; flash = 0; hue = ZONE_HUES[0];
+    orbs = []; popups = []; orbQueue = null; nextOrbAt = 700;
+    points = 0; combo = 0; comboTimer = 0; nearArmed = true; nearCooldown = 0;
+    stats = { orbs: 0, close: 0, maxMult: 1 };
+    runBest = bestScore(); passedBest = false; passedFar = false;
     head = { x: headX(), y: WORLD_H / 2, dead: false };
     for (let x = 0; x <= worldW + SEG_W * 2; x += SEG_W) pushSegment(x, true);
     for (let x = head.x - TRAIL_LEN; x <= head.x; x += 6) trail.push({ x, y: head.y });
@@ -625,6 +684,24 @@
         blocks.push({ x, y, w: SEG_W * 1.6, h, seed: Math.random() });
       }
       nextBlockAt = distance + x + 900 + Math.random() * 900 - Math.min(elapsed * 6, 500);
+    }
+
+    // Light orbs: some sit safely mid-cave, the valuable ones hug a wall.
+    if (!calm && state === 'playing' && !orbQueue && distance + x > nextOrbAt) {
+      const r = Math.random();
+      const edge = r < 0.25 ? -1 : r < 0.5 ? 1 : 0;
+      orbQueue = { left: Math.random() < 0.35 ? 3 : 1, edge, frac: 0.3 + Math.random() * 0.4, k: 0 };
+    }
+    if (!calm && orbQueue && orbQueue.k++ % 3 === 0) {
+      const s = cave[cave.length - 1];
+      const q = orbQueue;
+      const y = q.edge < 0 ? s.top + 30 : q.edge > 0 ? s.bot - 30 : s.top + q.frac * (s.bot - s.top);
+      const blocked = blocks.some(b => Math.abs(b.x + b.w / 2 - x) < 60 && y > b.y - 30 && y < b.y + b.h + 30);
+      if (!blocked) orbs.push({ x, y, risky: q.edge !== 0, ph: Math.random() * 6.28 });
+      if (--q.left <= 0) {
+        orbQueue = null;
+        nextOrbAt = distance + x + 420 + Math.random() * 600;
+      }
     }
   }
 
@@ -691,9 +768,25 @@
     hue = zoneHue();
     if (demo) autopilot();
 
-    const prevScore = score;
-    score = Math.floor(elapsed * 10);
-    if (!demo && Math.floor(score / 100) > Math.floor(prevScore / 100)) milestone();
+    if (!demo) {
+      points += 10 * dt * mult();
+      const prevScore = score;
+      score = Math.floor(points);
+      if (Math.floor(score / 250) > Math.floor(prevScore / 250)) milestone();
+      if (!passedBest && runBest > 0 && score > runBest) {
+        passedBest = true;
+        popup(head.x + 60, head.y - 70, t('newBest'), 64, true);
+        Sound.fanfare();
+      }
+      if (comboTimer > 0) {
+        comboTimer -= dt;
+        if (comboTimer <= 0) {
+          if (mult() > 1) Sound.comboLost();
+          combo = 0;
+        }
+      }
+      nearCooldown -= dt;
+    }
 
     vy += (pressing ? -THRUST : GRAVITY) * dt;
     vy = Math.max(-MAX_VY, Math.min(MAX_VY, vy));
@@ -707,10 +800,13 @@
     for (const p of trail) p.x -= dx;
     for (const p of particles) p.x -= dx;
     for (const r of rings) r.x -= dx;
+    for (const o of orbs) o.x -= dx;
+    for (const p of popups) p.x -= dx;
 
     while (cave.length > 2 && cave[1].x < -SEG_W) cave.shift();
     while (cave[cave.length - 1].x < worldW + SEG_W * 2) pushSegment(cave[cave.length - 1].x + SEG_W, false);
     blocks = blocks.filter(b => b.x + b.w > -40);
+    orbs = orbs.filter(o => o.x > -40 && !o.taken);
 
     trail.push({ x: head.x, y: head.y });
     while (trail.length > 2 && trail[1].x < head.x - TRAIL_LEN) trail.shift();
@@ -729,6 +825,66 @@
       }
     }
     if (hit) demo ? resetWorld() : gameOver();
+    else if (!demo) { collectOrbs(); closeCalls(w); }
+  }
+
+  function award(base, x, y, label) {
+    const m = mult();
+    const gain = base * m;
+    points += gain;
+    combo++;
+    comboTimer = COMBO_TIME;
+    if (mult() > m) {
+      Sound.levelUp(mult());
+      rings.push({ x: head.x, y: head.y, r: HEAD_R, life: 0.6, max: 0.6 });
+      comboEl.classList.remove('pop'); void comboEl.offsetWidth; comboEl.classList.add('pop');
+    }
+    stats.maxMult = Math.max(stats.maxMult, mult());
+    popup(x, y, label ? `${label} +${gain}` : `+${gain}`, label ? 38 : 44, false);
+  }
+
+  function popup(x, y, text, size, big) {
+    popups.push({ x, y, text, size, big, life: big ? 1.6 : 0.9, max: big ? 1.6 : 0.9 });
+  }
+
+  function collectOrbs() {
+    for (const o of orbs) {
+      if (o.taken) continue;
+      if ((o.x - head.x) ** 2 + (o.y - head.y) ** 2 < (HEAD_R + 20) ** 2) {
+        o.taken = true;
+        stats.orbs++;
+        award(o.risky ? 40 : 20, o.x, o.y - 30);
+        Sound.orb(combo);
+        for (let i = 0; i < 14; i++) {
+          const a = Math.random() * Math.PI * 2, v = 80 + Math.random() * 200;
+          particles.push({ x: o.x, y: o.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 0.5, max: 0.5, r: 5 + Math.random() * 4, h: 48, spark: true });
+        }
+      }
+    }
+  }
+
+  function closeCalls(w) {
+    // Skimming a wall or obstacle without touching it is rewarded, once per approach.
+    let clear = head.y - HEAD_R - w.top, cy = w.top;
+    if (w.bot - head.y - HEAD_R < clear) { clear = w.bot - head.y - HEAD_R; cy = w.bot; }
+    for (const b of blocks) {
+      if (b.x > head.x + HEAD_R + NEAR_DIST || b.x + b.w < head.x - HEAD_R - NEAR_DIST) continue;
+      const nx = Math.max(b.x, Math.min(head.x, b.x + b.w));
+      const ny = Math.max(b.y, Math.min(head.y, b.y + b.h));
+      const d = Math.hypot(nx - head.x, ny - head.y) - HEAD_R;
+      if (d < clear) { clear = d; cy = ny; }
+    }
+    if (clear < NEAR_DIST && nearArmed && nearCooldown <= 0) {
+      nearArmed = false;
+      nearCooldown = 0.6;
+      stats.close++;
+      award(15, head.x + 30, cy < head.y ? head.y - 50 : head.y + 60, t('close'));
+      Sound.near();
+      for (let i = 0; i < 8; i++) {
+        particles.push({ x: head.x, y: cy, vx: -60 - Math.random() * 120, vy: (Math.random() - 0.5) * 160, life: 0.4, max: 0.4, r: 4 + Math.random() * 3, h: hue + 20, spark: true });
+      }
+    }
+    if (clear > NEAR_DIST * 2.2) nearArmed = true;
   }
 
   function updateFx(dt) {
@@ -739,6 +895,9 @@
     particles = particles.filter(p => p.life > 0);
     for (const r of rings) { r.r += 420 * dt; r.life -= dt; }
     rings = rings.filter(r => r.life > 0);
+    for (const p of popups) { p.y -= (p.big ? 30 : 60) * dt; p.life -= dt; }
+    popups = popups.filter(p => p.life > 0);
+    for (const o of orbs) o.ph += dt * 4;
     const drift = (state === 'playing' || state === 'menu') ? speed : 40;
     for (const m of motes) {
       m.x -= drift * m.z * dt;
@@ -961,6 +1120,45 @@
     return pts;
   }
 
+  function drawBestGate() {
+    // A curtain of light where your longest run ended
+    if (state !== 'playing' && state !== 'over' && state !== 'paused') return;
+    if (bestDist <= 0) return;
+    const gx = head.x + (bestDist - distance);
+    if (gx < -20 || gx > worldW + 20) return;
+    const w = caveAt(gx);
+    const g = ctx.createLinearGradient(gx - 30, 0, gx + 30, 0);
+    g.addColorStop(0, 'hsla(48, 100%, 70%, 0)');
+    g.addColorStop(0.5, 'hsla(48, 100%, 72%, 0.28)');
+    g.addColorStop(1, 'hsla(48, 100%, 70%, 0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(gx - 30, w.top, 60, w.bot - w.top);
+    ctx.strokeStyle = 'hsla(48, 100%, 75%, 0.8)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([10, 12]);
+    ctx.beginPath(); ctx.moveTo(gx, w.top); ctx.lineTo(gx, w.bot); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = 'hsl(48, 100%, 80%)';
+    ctx.font = '600 30px Fredoka, "Trebuchet MS", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(t('furthest'), gx, w.top + 40);
+  }
+
+  function drawPopups() {
+    ctx.textAlign = 'center';
+    for (const p of popups) {
+      const a = Math.min(1, p.life / p.max * 2.5);
+      ctx.globalAlpha = a;
+      ctx.font = `700 ${p.size}px Fredoka, "Trebuchet MS", sans-serif`;
+      ctx.lineWidth = 6;
+      ctx.strokeStyle = 'rgba(2, 8, 12, 0.7)';
+      ctx.strokeText(p.text, p.x, p.y);
+      ctx.fillStyle = p.big ? 'hsl(100, 100%, 75%)' : 'hsl(52, 100%, 80%)';
+      ctx.fillText(p.text, p.x, p.y);
+    }
+    ctx.globalAlpha = 1;
+  }
+
   function drawLighting() {
     // Darkness everywhere except around the worm's own light
     const R = Math.max(worldW, WORLD_H);
@@ -989,6 +1187,7 @@
 
     drawWalls();
     drawBlocks();
+    drawBestGate();
 
     ctx.globalCompositeOperation = 'lighter';
     if (!head.dead) drawTrail();
@@ -1012,6 +1211,19 @@
       glow(WORM_HUE, head.x, head.y, 34, 0.5);
       for (const k of [-1, 1]) glow(WORM_HUE, head.x + 12 + k * 5, head.y - 28, 10, 0.9);
     }
+    for (const o of orbs) {
+      const pulse = 1 + Math.sin(o.ph) * 0.15;
+      const r = (o.risky ? 14 : 11) * pulse;
+      glow(48, o.x, o.y, r * 5, 0.55);
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = o.risky ? 'hsl(45, 100%, 82%)' : 'hsl(55, 100%, 88%)';
+      ctx.beginPath(); ctx.arc(o.x, o.y, r, 0, Math.PI * 2); ctx.fill();
+      if (o.risky) {
+        ctx.strokeStyle = `hsla(40, 100%, 70%, ${0.5 + Math.sin(o.ph) * 0.3})`;
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(o.x, o.y, r + 7, 0, Math.PI * 2); ctx.stroke();
+      }
+    }
     for (const p of particles) {
       const a = p.life / p.max;
       glow(p.h, p.x, p.y, p.r * (p.spark ? 1.5 : 1 + (1 - a)), a * (p.spark ? 1 : 0.45));
@@ -1023,6 +1235,7 @@
       ctx.beginPath(); ctx.arc(r.x, r.y, r.r, 0, Math.PI * 2); ctx.stroke();
     }
     ctx.globalCompositeOperation = 'source-over';
+    drawPopups();
 
     if (flash > 0) {
       ctx.globalAlpha = Math.min(1, flash) * 0.6;
@@ -1036,13 +1249,27 @@
     const dt = Math.min(0.033, (time - lastTime) / 1000 || 0);
     lastTime = time;
     if (state === 'playing' || state === 'menu') update(dt);
-    if (state === 'playing') scoreEl.textContent = score;
+    if (state === 'playing') {
+      scoreEl.textContent = score;
+      const m = mult();
+      comboEl.hidden = m < 2;
+      if (m >= 2) {
+        comboEl.firstChild.nodeValue = `×${m}`;
+        comboEl.lastChild.style.transform = `scaleX(${Math.max(0, comboTimer / COMBO_TIME)})`;
+      }
+      if (!passedFar && bestDist > 0 && distance > bestDist) {
+        passedFar = true;
+        rings.push({ x: head.x, y: head.y, r: HEAD_R, life: 0.8, max: 0.8 });
+        Sound.chime();
+      }
+    }
     if (state !== 'paused') updateFx(dt);
     draw();
     requestAnimationFrame(loop);
   }
 
   // ---------- States & UI ----------
+  const comboEl = $('combo');
   const scoreEl = $('score'), bestEl = $('best'), muteBtn = $('muteBtn'), musicBtn = $('musicBtn');
   const menu = $('menu'), over = $('over'), scoresView = $('scores'), pauseView = $('pause');
   const nameForm = $('nameForm'), nameInput = $('nameInput'), overButtons = $('overButtons');
@@ -1060,6 +1287,7 @@
     show(null);
     scoreEl.hidden = false;
     scoreEl.textContent = '0';
+    comboEl.hidden = true;
     updateBest();
     Sound.mood(0.09, true);
   }
@@ -1096,7 +1324,10 @@
     if (navigator.vibrate) navigator.vibrate(150);
 
     pendingScore = score;
+    comboEl.hidden = true;
     $('finalScore').textContent = score;
+    $('stats').textContent = `${t('orbs')} ${stats.orbs} · ${t('closeCalls')} ${stats.close} · ${t('maxCombo')} ×${stats.maxMult}`;
+    if (distance > bestDist) { bestDist = Math.round(distance); setItem(BEST_DIST_KEY, String(bestDist)); }
     const isBest = score > 0 && score > bestScore();
     const isTop = qualifies(score);
     $('newBest').hidden = !isBest;
@@ -1105,7 +1336,7 @@
     // Short delay so lifting the finger doesn't hit a button straight away.
     overTimer = setTimeout(() => {
       show(over);
-      if (isBest) Sound.fanfare();
+      if (isBest && !passedBest) Sound.fanfare();
       if (isTop) {
         nameInput.value = getItem(LAST_NAME_KEY) || '';
         nameInput.focus();
@@ -1148,6 +1379,7 @@
   function backToMenu() {
     state = 'menu';
     scoreEl.hidden = true;
+    comboEl.hidden = true;
     resetWorld();
     show(menu);
     Sound.mood(0.04);
