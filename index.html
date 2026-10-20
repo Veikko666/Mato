@@ -58,6 +58,18 @@
   }
   #combo.pop { animation: bump .35s ease-out; }
   .stats { font-size: 15px; font-variant-numeric: tabular-nums; }
+  button.gold {
+    background: linear-gradient(180deg, #ffe08a, #e0a43a); color: #2a1a02;
+    box-shadow: 0 0 22px rgba(255, 210, 110, .35);
+  }
+  button .sub { display: block; font-size: 13px; font-weight: 400; opacity: .8; margin-top: 2px; }
+  .chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 14px; }
+  button.chip {
+    width: auto; font-size: 14px; font-weight: 600; padding: 8px 14px; border-radius: 999px;
+    background: rgba(255,255,255,.06); color: var(--text); border: 1px solid var(--line); box-shadow: none;
+  }
+  button.chip.active { background: var(--glow); color: var(--ink); border-color: transparent; }
+  .mode-label { margin: 0 0 4px; font-size: 14px; letter-spacing: .6px; text-transform: uppercase; }
   @keyframes bump { 0% { transform: scale(1.35); color: var(--glow); } 100% { transform: scale(1); } }
   .hud-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
   #best { color: var(--muted); font-weight: 600; font-size: 16px; font-variant-numeric: tabular-nums; }
@@ -134,6 +146,16 @@
   ol li .s { font-weight: 600; font-variant-numeric: tabular-nums; }
   ol li.me { background: rgba(166,255,126,.16); color: var(--glow); }
   .empty { color: var(--muted); text-align: center; padding: 12px; }
+  @media (max-height: 560px) {
+    .panel { padding: 16px 18px; }
+    .logo { font-size: 34px; }
+    .tagline { font-size: 16px; margin-top: 6px; }
+    #menu .panel > p:not(.tagline) { display: none; }
+    .stack { gap: 8px; margin-top: 10px; }
+    button { padding: 10px 14px; font-size: 17px; }
+    .chips { margin-top: 10px; }
+    .score-big { font-size: 44px; }
+  }
   @media (prefers-reduced-motion: reduce) {
     .logo, .panel, #score.bump { animation: none; }
   }
@@ -172,16 +194,22 @@
     <p class="tagline" data-t="tagline"></p>
     <p data-t="hint"></p>
     <div class="stack">
-      <button id="startBtn" type="button" data-t="play"></button>
+      <button id="startBtn" type="button"><span data-t="endless"></span><span class="sub" data-t="endlessSub"></span></button>
+      <button class="gold" id="dailyBtn" type="button"><span data-t="daily"></span><span class="sub" id="dailyDate"></span></button>
       <button class="secondary" id="scoresBtn" type="button" data-t="top10"></button>
-      <button class="link" id="langBtn" type="button" data-t="lang"></button>
     </div>
+    <div class="chips">
+      <button class="chip" id="ghostBtn" type="button"></button>
+      <button class="chip" id="styleBtn" type="button"></button>
+    </div>
+    <div class="stack"><button class="link" id="langBtn" type="button" data-t="lang"></button></div>
     <p class="tribute" data-t="tribute"></p>
   </div>
 </div>
 
 <div class="overlay hidden" id="over">
   <div class="panel">
+    <p class="mode-label" id="overMode"></p>
     <h2 data-t="crashed"></h2>
     <div class="score-big" id="finalScore">0</div>
     <span class="badge" id="newBest" hidden data-t="newBest"></span>
@@ -201,6 +229,10 @@
 <div class="overlay hidden" id="scores">
   <div class="panel">
     <h2 data-t="top10"></h2>
+    <div class="chips">
+      <button class="chip" id="tabEndless" type="button" data-t="endless"></button>
+      <button class="chip" id="tabDaily" type="button" data-t="daily"></button>
+    </div>
     <ol id="scoreList"></ol>
     <div class="stack">
       <button id="scoresPlayBtn" type="button" data-t="play"></button>
@@ -227,31 +259,53 @@
   const LANG_KEY = 'glowworm-lang';
   const MUTE_KEY = 'glowworm-muted';
   const MUSIC_KEY = 'glowworm-music';
+  const STYLE_KEY = 'glowworm-music-style';
+  const GHOST_KEY = 'glowworm-ghost';
 
   function getItem(k) { try { return localStorage.getItem(k); } catch { return null; } }
   function setItem(k, v) { try { localStorage.setItem(k, v); } catch {} }
 
-  function loadScores() {
+  // Two modes: 'endless' (a new cave every run) and 'daily' (one seeded cave per calendar day)
+  let mode = 'endless';
+  const todayKey = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  };
+  let day = todayKey();
+  const listKey = m => m === 'daily' ? `glowworm-daily-top10-${day}` : STORE_KEY;
+  const distKey = m => m === 'daily' ? `glowworm-daily-dist-${day}` : 'glowworm-best-dist';
+  const ghostKey = () => `glowworm-daily-ghost-${day}`;
+
+  function pruneOldDays() {
     try {
-      const list = JSON.parse(getItem(STORE_KEY) || '[]');
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith('glowworm-daily-') && !k.endsWith(day)) localStorage.removeItem(k);
+      }
+    } catch {}
+  }
+
+  function loadScores(m = mode) {
+    try {
+      const list = JSON.parse(getItem(listKey(m)) || '[]');
       return Array.isArray(list) ? list.filter(e => e && typeof e.score === 'number').slice(0, 10) : [];
     } catch { return []; }
   }
-  function qualifies(score) {
-    const list = loadScores();
+  function qualifies(score, m = mode) {
+    const list = loadScores(m);
     return score > 0 && (list.length < 10 || score > list[list.length - 1].score);
   }
-  function addScore(name, score) {
-    const list = loadScores();
+  function addScore(name, score, m = mode) {
+    const list = loadScores(m);
     const entry = { name, score, date: Date.now() };
     list.push(entry);
     list.sort((a, b) => b.score - a.score || a.date - b.date);
     const top = list.slice(0, 10);
-    setItem(STORE_KEY, JSON.stringify(top));
+    setItem(listKey(m), JSON.stringify(top));
     return top.indexOf(entry);
   }
-  function bestScore() {
-    const list = loadScores();
+  function bestScore(m = mode) {
+    const list = loadScores(m);
     return list.length ? list[0].score : 0;
   }
 
@@ -261,6 +315,8 @@
       title: 'Glowworm',
       tagline: 'Hold to rise. Let go to fall.',
       hint: 'The cave keeps closing in. Grab light orbs and skim the walls to build your multiplier.',
+      endless: 'Endless', endlessSub: 'A new cave every run', daily: 'Daily cave',
+      ghost: 'Ghost', on: 'On', off: 'Off', calm: 'Calm', rising: 'Rising',
       close: 'Close!', orbs: 'Orbs', closeCalls: 'Close calls', maxCombo: 'Best multiplier', furthest: 'Your furthest',
       play: 'Play', top10: 'Top 10', back: 'Back', again: 'Play again', save: 'Save',
       crashed: 'Crashed!', newBest: 'New best!',
@@ -273,6 +329,8 @@
       title: 'Kiiltomato',
       tagline: 'Pidä pohjassa, niin mato nousee. Päästä irti, niin se laskee.',
       hint: 'Luola kapenee koko ajan. Kerää valopalloja ja liu\'u läheltä seiniä, niin kerroin kasvaa.',
+      endless: 'Loputon', endlessSub: 'Uusi luola joka kerta', daily: 'Päivän luola',
+      ghost: 'Haamu', on: 'Päällä', off: 'Pois', calm: 'Rauhallinen', rising: 'Kiihtyvä',
       close: 'Läheltä piti!', orbs: 'Valopallot', closeCalls: 'Läheltä piti', maxCombo: 'Paras kerroin', furthest: 'Pisin matkasi',
       play: 'Pelaa', top10: 'Top 10', back: 'Takaisin', again: 'Uudestaan', save: 'Tallenna',
       crashed: 'Törmäsit!', newBest: 'Uusi ennätys!',
@@ -292,6 +350,8 @@
     document.querySelectorAll('[data-tp]').forEach(el => { el.placeholder = t(el.dataset.tp); });
     $('muteBtn').setAttribute('aria-label', t('sound'));
     $('musicBtn').setAttribute('aria-label', t('music'));
+    $('dailyDate').textContent = new Date().toLocaleDateString(lang === 'fi' ? 'fi-FI' : 'en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
+    syncChips();
     updateBest();
   }
 
@@ -314,6 +374,8 @@
     let musicBus, musicIn, pluckIn;
     let musicOn = getItem(MUSIC_KEY) !== '0';
     let busy = false;          // more plucks while playing
+    let style = getItem(STYLE_KEY) === 'rising' ? 'rising' : 'calm';
+    let intensity = 0;         // 0..1, only used by the 'rising' style
     let nextChordAt = 0, nextStepAt = 0, chordIdx = 0, stepIdx = 0;
     const chordLog = [];       // [{t, idx}] so plucks follow the chord sounding at their time
     const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
@@ -323,16 +385,17 @@
       return CHORDS[0];
     }
 
-    function playChord(ch, at) {
-      const end = at + CHORD_LEN;
+    function playChord(ch, at, len) {
+      const end = at + len;
+      const attack = Math.min(2.8, len * 0.3);
       const f = ac.createBiquadFilter();
       f.type = 'lowpass'; f.Q.value = 0.7;
       f.frequency.setValueAtTime(450, at);
-      f.frequency.linearRampToValueAtTime(1300, at + CHORD_LEN * 0.55);
+      f.frequency.linearRampToValueAtTime(1300, at + len * 0.55);
       f.frequency.linearRampToValueAtTime(500, end + 3);
       const g = ac.createGain();
       g.gain.setValueAtTime(0.0001, at);
-      g.gain.linearRampToValueAtTime(0.03, at + 2.8);
+      g.gain.linearRampToValueAtTime(0.03, at + attack);
       g.gain.setValueAtTime(0.03, end);
       g.gain.linearRampToValueAtTime(0.0001, end + 3.5);
       f.connect(g); g.connect(musicIn);
@@ -375,24 +438,71 @@
       o.start(at); o2.start(at); o.stop(at + 1.5); o2.stop(at + 1.5);
     }
 
+    function kick(at, I) {
+      const o = ac.createOscillator(), g = ac.createGain();
+      o.type = 'sine';
+      o.frequency.setValueAtTime(120, at);
+      o.frequency.exponentialRampToValueAtTime(42, at + 0.22);
+      g.gain.setValueAtTime(0.0001, at);
+      g.gain.exponentialRampToValueAtTime(0.12 + 0.2 * I, at + 0.008);
+      g.gain.exponentialRampToValueAtTime(0.0001, at + 0.32);
+      o.connect(g); g.connect(musicBus);
+      o.start(at); o.stop(at + 0.35);
+    }
+
+    function hat(at, I) {
+      const src = ac.createBufferSource(); src.buffer = noiseBuf;
+      const f = ac.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = 7000;
+      const g = ac.createGain();
+      g.gain.setValueAtTime(0.0001, at);
+      g.gain.exponentialRampToValueAtTime(0.02 + 0.03 * I, at + 0.004);
+      g.gain.exponentialRampToValueAtTime(0.0001, at + 0.06);
+      src.connect(f); f.connect(g); g.connect(musicBus);
+      src.start(at, Math.random()); src.stop(at + 0.08);
+    }
+
+    function arp(at, I, k) {
+      // Rising chord-tone arpeggio, brighter as intensity grows
+      const ch = chordAt(at);
+      const notes = ch.pad.concat(ch.pad.map(m => m + 12));
+      const o = ac.createOscillator(), f = ac.createBiquadFilter(), g = ac.createGain();
+      o.type = 'square'; o.frequency.value = mtof(notes[k % notes.length] + 12);
+      f.type = 'lowpass'; f.frequency.value = 900 + 1800 * I;
+      g.gain.setValueAtTime(0.0001, at);
+      g.gain.exponentialRampToValueAtTime(0.012 + 0.014 * I, at + 0.005);
+      g.gain.exponentialRampToValueAtTime(0.0001, at + 0.2);
+      o.connect(f); f.connect(g); g.connect(musicIn);
+      o.start(at); o.stop(at + 0.22);
+    }
+
+    let arpIdx = 0;
     function musicTick() {
       if (!ac || ac.state !== 'running' || !musicOn) return;
       const now = ac.currentTime;
+      const I = style === 'rising' ? intensity : 0;
       if (nextChordAt < now) nextChordAt = now + 0.1;
       if (nextStepAt < now) nextStepAt = now + 0.1;
       while (nextChordAt < now + 1) {
+        const len = CHORD_LEN * (1 - 0.45 * I);
         chordLog.push({ t: nextChordAt, idx: chordIdx });
         if (chordLog.length > 4) chordLog.shift();
-        playChord(CHORDS[chordIdx], nextChordAt);
+        playChord(CHORDS[chordIdx], nextChordAt, len);
         chordIdx = (chordIdx + 1) % CHORDS.length;
-        nextChordAt += CHORD_LEN;
+        nextChordAt += len;
       }
       while (nextStepAt < now + 1) {
-        // Plucks favour the on-beats; sparse in the menu, livelier in game
-        const p = (busy ? 0.38 : 0.14) * (stepIdx % 2 ? 0.5 : 1);
-        if (Math.random() < p) pluck(nextStepAt);
+        // 16th-note grid. Calm: plucks on 8ths, favouring the beat; sparse in the menu, livelier in game.
+        // Rising: a kick, then hats and an arpeggio fade in, and the tempo creeps up.
+        const at = nextStepAt;
+        if (stepIdx % 2 === 0) {
+          const p = (busy ? 0.38 : 0.14) * (stepIdx % 4 ? 0.5 : 1) * (1 - 0.5 * I);
+          if (Math.random() < p) pluck(at);
+        }
+        if (I > 0.12 && stepIdx % 4 === 0) kick(at, I);
+        if (I > 0.55 && stepIdx % 4 === 2) hat(at, I);
+        if (I > 0.3 && (stepIdx % 2 === 0 || I > 0.7)) arp(at, I, arpIdx++);
         stepIdx++;
-        nextStepAt += STEP;
+        nextStepAt += (STEP / 2) * (1 - 0.22 * I);
       }
     }
 
@@ -476,6 +586,9 @@
         if (ac) master.gain.setTargetAtTime(m ? 0 : 0.9, ac.currentTime, 0.05);
       },
       get musicOn() { return musicOn; },
+      get style() { return style; },
+      setStyle(st) { style = st; setItem(STYLE_KEY, st); },
+      intensity(x) { intensity = Math.max(0, Math.min(1, x)); },
       setMusic(on) {
         musicOn = on;
         setItem(MUSIC_KEY, on ? '1' : '0');
@@ -611,32 +724,75 @@
   let state = 'menu';          // menu | playing | paused | over
   let pressing = false;
   let cave = [], blocks = [], trail = [], particles = [], rings = [], motes = [];
-  let head, vy, distance, elapsed, speed, gap, center, centerVel, nextBlockAt;
+  let head, vy, distance, elapsed, speed, center, centerVel, nextBlockAt;
   let score = 0, lastTime = 0, shake = 0, flash = 0, hue = ZONE_HUES[0];
   // Scoring: time points and bonuses are all scaled by the multiplier
   const COMBO_TIME = 4;        // seconds before an idle combo runs out
   const NEAR_DIST = 16;        // clearance that counts as a close call
-  const BEST_DIST_KEY = 'glowworm-best-dist';
   let orbs = [], popups = [], orbQueue = null, nextOrbAt = 0;
   let points = 0, combo = 0, comboTimer = 0, nearArmed = true, nearCooldown = 0;
   let stats = { orbs: 0, close: 0, maxMult: 1 };
   let runBest = 0, passedBest = false, passedFar = false;
-  let bestDist = Number(getItem(BEST_DIST_KEY)) || 0;
+  let bestDist = 0;
   const mult = () => Math.min(5, 1 + Math.floor(combo / 4));
 
   const headX = () => Math.min(worldW * 0.25, 420);
 
-  function resetWorld() {
-    cave = []; blocks = []; trail = []; particles = []; rings = [];
-    distance = 0; elapsed = 0; speed = START_SPEED; gap = START_GAP;
+  // Seeded RNG for everything that shapes the cave, so a seed always builds the same cave.
+  function mulberry32(a) {
+    return () => {
+      a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function hashString(str) {
+    let h = 2166136261;
+    for (let i = 0; i < str.length; i++) h = Math.imul(h ^ str.charCodeAt(i), 16777619);
+    return h >>> 0;
+  }
+  let rng = Math.random;
+
+  // Difficulty follows how far into the cave a segment is, never the clock or the screen size,
+  // so the daily cave is identical on every device. genTime(d) is the time a nominal-speed worm
+  // needs to reach d; the old time-based tuning reads from it.
+  const CALM_D = 600;          // a straight, quiet start
+  const GEN_V0 = 300, GEN_ACC = 5, GEN_VMAX = 580;
+  const GEN_CAP_T = (GEN_VMAX - GEN_V0) / GEN_ACC;
+  const GEN_CAP_D = GEN_V0 * GEN_CAP_T + GEN_ACC / 2 * GEN_CAP_T * GEN_CAP_T;
+  function genTime(d) {
+    if (d <= 0) return 0;
+    if (d < GEN_CAP_D) return (-GEN_V0 + Math.sqrt(GEN_V0 * GEN_V0 + 2 * GEN_ACC * d)) / GEN_ACC;
+    return GEN_CAP_T + (d - GEN_CAP_D) / GEN_VMAX;
+  }
+
+  // Ghost: your best daily run, sampled every GHOST_STEP units of distance
+  const GHOST_STEP = 10;
+  let ghostOn = getItem(GHOST_KEY) !== '0';
+  let ghost = null, ghostRec = [];
+  function ghostY(d) {
+    if (!ghost) return null;
+    const i = d / GHOST_STEP;
+    if (i < 0 || i > ghost.ys.length - 1) return null;
+    const a = ghost.ys[Math.floor(i)], b = ghost.ys[Math.min(ghost.ys.length - 1, Math.floor(i) + 1)];
+    return a + (b - a) * (i - Math.floor(i));
+  }
+
+  function resetWorld(seed) {
+    rng = mulberry32(seed === undefined ? (Math.random() * 4294967296) >>> 0 : seed);
+    cave = []; blocks = []; trail = []; particles = []; rings = []; ghostRec = [];
+    distance = 0; elapsed = 0; speed = START_SPEED;
     center = WORLD_H / 2; centerVel = 0; nextBlockAt = 2500;
     vy = 0; score = 0; shake = 0; flash = 0; hue = ZONE_HUES[0];
     orbs = []; popups = []; orbQueue = null; nextOrbAt = 700;
     points = 0; combo = 0; comboTimer = 0; nearArmed = true; nearCooldown = 0;
     stats = { orbs: 0, close: 0, maxMult: 1 };
     runBest = bestScore(); passedBest = false; passedFar = false;
+    bestDist = Number(getItem(distKey(mode))) || 0;
     head = { x: headX(), y: WORLD_H / 2, dead: false };
-    for (let x = 0; x <= worldW + SEG_W * 2; x += SEG_W) pushSegment(x, true);
+    // Segments sit on a grid aligned with the worm, so cave distances are the same on every screen.
+    for (let x = head.x - Math.ceil(head.x / SEG_W) * SEG_W; x <= worldW + SEG_W * 2; x += SEG_W) pushSegment(x);
     for (let x = head.x - TRAIL_LEN; x <= head.x; x += 6) trail.push({ x, y: head.y });
   }
 
@@ -648,51 +804,58 @@
     }
   }
 
-  function crystal() {
-    return { d: 14 + Math.random() * 26, n: 2 + (Math.random() * 2 | 0), len: 0.7 + Math.random() * 0.5, tilt: (Math.random() - 0.5) * 0.6, h: (Math.random() - 0.5) * 40 };
+  function crystal(R) {
+    return { d: 14 + R() * 26, n: 2 + (R() * 2 | 0), len: 0.7 + R() * 0.5, tilt: (R() - 0.5) * 0.6, h: (R() - 0.5) * 40 };
   }
 
-  function pushSegment(x, calm) {
+  function pushSegment(x) {
+    const d = Math.round(distance + x - head.x);   // how far into the cave this segment is
+    const demo = state === 'menu';
+    const calm = d < CALM_D;
+    const R = calm ? Math.random : rng;
+    const gt = demo ? 0 : genTime(d);
+    const g = Math.max(MIN_GAP, START_GAP - gt * 7.5);
     if (!calm) {
-      // The cave centre wanders randomly, more wildly the longer you survive.
-      const wild = 0.6 + Math.min(elapsed / 60, 1.4);
-      centerVel += (Math.random() - 0.5) * 9 * wild;
+      // The cave centre wanders randomly, more wildly the deeper you go.
+      const wild = 0.6 + Math.min(gt / 60, 1.4);
+      centerVel += (R() - 0.5) * 9 * wild;
       centerVel *= 0.94;
-      const maxVel = 10 + 14 * Math.min(elapsed / 60, 1);
+      const maxVel = 10 + 14 * Math.min(gt / 60, 1);
       centerVel = Math.max(-maxVel, Math.min(maxVel, centerVel));
       center += centerVel;
     }
-    const margin = 30 + gap / 2;
+    const margin = 30 + g / 2;
     if (center < margin) { center = margin; centerVel = Math.abs(centerVel); }
     if (center > WORLD_H - margin) { center = WORLD_H - margin; centerVel = -Math.abs(centerVel); }
     const jag = calm ? 0 : 6;
     cave.push({
       x,
-      top: center - gap / 2 + (Math.random() - 0.5) * jag,
-      bot: center + gap / 2 + (Math.random() - 0.5) * jag,
-      r: Math.random(),
-      ct: Math.random() < 0.09 ? crystal() : null,
-      cb: Math.random() < 0.09 ? crystal() : null,
+      top: center - g / 2 + (R() - 0.5) * jag,
+      bot: center + g / 2 + (R() - 0.5) * jag,
+      r: R(),
+      ct: R() < 0.09 ? crystal(R) : null,
+      cb: R() < 0.09 ? crystal(R) : null,
     });
+    if (calm) return;
 
     // Obstacles inside the cave once the game gets going.
-    if (!calm && distance + x > nextBlockAt && elapsed > 8) {
-      const h = Math.min(60 + elapsed * 1.5, gap * 0.38);
-      const room = gap - h - HEAD_R * 6;
+    if (d > nextBlockAt && gt > 8) {
+      const h = Math.min(60 + gt * 1.5, g * 0.38);
+      const room = g - h - HEAD_R * 6;
       if (room > 0) {
-        const y = center - gap / 2 + HEAD_R * 3 + Math.random() * room;
-        blocks.push({ x, y, w: SEG_W * 1.6, h, seed: Math.random() });
+        const y = center - g / 2 + HEAD_R * 3 + R() * room;
+        blocks.push({ x, y, w: SEG_W * 1.6, h, seed: R() });
       }
-      nextBlockAt = distance + x + 900 + Math.random() * 900 - Math.min(elapsed * 6, 500);
+      nextBlockAt = d + 900 + R() * 900 - Math.min(gt * 6, 500);
     }
 
     // Light orbs: some sit safely mid-cave, the valuable ones hug a wall.
-    if (!calm && state === 'playing' && !orbQueue && distance + x > nextOrbAt) {
-      const r = Math.random();
+    if (!demo && !orbQueue && d > nextOrbAt) {
+      const r = R();
       const edge = r < 0.25 ? -1 : r < 0.5 ? 1 : 0;
-      orbQueue = { left: Math.random() < 0.35 ? 3 : 1, edge, frac: 0.3 + Math.random() * 0.4, k: 0 };
+      orbQueue = { left: R() < 0.35 ? 3 : 1, edge, frac: 0.3 + R() * 0.4, k: 0 };
     }
-    if (!calm && orbQueue && orbQueue.k++ % 3 === 0) {
+    if (orbQueue && orbQueue.k++ % 3 === 0) {
       const s = cave[cave.length - 1];
       const q = orbQueue;
       const y = q.edge < 0 ? s.top + 30 : q.edge > 0 ? s.bot - 30 : s.top + q.frac * (s.bot - s.top);
@@ -700,7 +863,7 @@
       if (!blocked) orbs.push({ x, y, risky: q.edge !== 0, ph: Math.random() * 6.28 });
       if (--q.left <= 0) {
         orbQueue = null;
-        nextOrbAt = distance + x + 420 + Math.random() * 600;
+        nextOrbAt = d + 420 + R() * 600;
       }
     }
   }
@@ -738,7 +901,7 @@
     if (e.code !== 'Space' && e.code !== 'ArrowUp') return;
     if (state === 'playing') press(e);
     else if (state === 'paused') { e.preventDefault(); resumeGame(); }
-    else if (state === 'menu' && !menu.classList.contains('hidden')) { e.preventDefault(); startGame(); }
+    else if (state === 'menu' && !menu.classList.contains('hidden')) { e.preventDefault(); startGame('endless'); }
   });
   window.addEventListener('keyup', e => { if (e.code === 'Space' || e.code === 'ArrowUp') release(); });
   document.addEventListener('contextmenu', e => e.preventDefault());
@@ -764,7 +927,6 @@
     // On a narrow (portrait) screen slow down so there's time to see ahead.
     const viewFactor = Math.max(0.6, Math.min(1, worldW / 1400));
     speed = Math.min(MAX_SPEED, START_SPEED + elapsed * 6) * viewFactor * (demo ? 0.8 : 1);
-    gap = Math.max(MIN_GAP, START_GAP - elapsed * 7.5);
     hue = zoneHue();
     if (demo) autopilot();
 
@@ -804,11 +966,15 @@
     for (const p of popups) p.x -= dx;
 
     while (cave.length > 2 && cave[1].x < -SEG_W) cave.shift();
-    while (cave[cave.length - 1].x < worldW + SEG_W * 2) pushSegment(cave[cave.length - 1].x + SEG_W, false);
+    while (cave[cave.length - 1].x < worldW + SEG_W * 2) pushSegment(cave[cave.length - 1].x + SEG_W);
     blocks = blocks.filter(b => b.x + b.w > -40);
     orbs = orbs.filter(o => o.x > -40 && !o.taken);
 
     trail.push({ x: head.x, y: head.y });
+    if (!demo && mode === 'daily') {
+      while (ghostRec.length * GHOST_STEP <= distance) ghostRec.push(Math.round(head.y));
+    }
+    if (!demo) Sound.intensity(elapsed / 80);
     while (trail.length > 2 && trail[1].x < head.x - TRAIL_LEN) trail.shift();
 
     if (pressing && Math.random() < 0.7) {
@@ -1144,6 +1310,35 @@
     ctx.fillText(t('furthest'), gx, w.top + 40);
   }
 
+  function ghostVisible() {
+    return ghostOn && mode === 'daily' && ghost && state !== 'menu';
+  }
+
+  function drawGhost() {
+    if (!ghostVisible()) return;
+    const n = 16;
+    for (let i = n; i >= 0; i--) {
+      const off = (BODY_LEN * i) / n;
+      const y = ghostY(distance - off);
+      if (y === null) continue;
+      const f = 1 - i / n;
+      ctx.fillStyle = `hsla(195, 80%, 85%, ${0.12 + f * 0.16})`;
+      ctx.beginPath(); ctx.arc(head.x - off, y, HEAD_R * (0.5 + 0.5 * f), 0, Math.PI * 2); ctx.fill();
+    }
+    // Where the ghost crashed
+    const endD = (ghost.ys.length - 1) * GHOST_STEP;
+    const ex = head.x + (endD - distance);
+    if (ex > -30 && ex < worldW + 30) {
+      const ey = ghost.ys[ghost.ys.length - 1];
+      ctx.strokeStyle = 'hsla(195, 80%, 85%, 0.55)';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(ex - 9, ey - 9); ctx.lineTo(ex + 9, ey + 9);
+      ctx.moveTo(ex + 9, ey - 9); ctx.lineTo(ex - 9, ey + 9);
+      ctx.stroke();
+    }
+  }
+
   function drawPopups() {
     ctx.textAlign = 'center';
     for (const p of popups) {
@@ -1188,6 +1383,7 @@
     drawWalls();
     drawBlocks();
     drawBestGate();
+    drawGhost();
 
     ctx.globalCompositeOperation = 'lighter';
     if (!head.dead) drawTrail();
@@ -1210,6 +1406,10 @@
       glow(WORM_HUE, head.x, head.y, 110, 0.35);
       glow(WORM_HUE, head.x, head.y, 34, 0.5);
       for (const k of [-1, 1]) glow(WORM_HUE, head.x + 12 + k * 5, head.y - 28, 10, 0.9);
+    }
+    if (ghostVisible()) {
+      const gy = ghostY(distance);
+      if (gy !== null) glow(195, head.x, gy, 40, 0.3);
     }
     for (const o of orbs) {
       const pulse = 1 + Math.sin(o.ph) * 0.15;
@@ -1278,12 +1478,19 @@
   function show(el) { [menu, over, scoresView, pauseView].forEach(o => o.classList.toggle('hidden', o !== el)); }
   function updateBest() { const b = bestScore(); bestEl.textContent = b ? `${t('best')} ${b}` : ''; }
 
-  function startGame() {
+  function startGame(m) {
     Sound.init();
     clearTimeout(overTimer);
-    resetWorld();
-    pressing = false;
+    mode = m === 'daily' ? 'daily' : 'endless';
+    day = todayKey();
+    ghost = null;
+    if (mode === 'daily') {
+      try { ghost = JSON.parse(getItem(ghostKey()) || 'null'); } catch {}
+      if (!ghost || !Array.isArray(ghost.ys) || ghost.ys.length < 2) ghost = null;
+    }
     state = 'playing';
+    resetWorld(mode === 'daily' ? hashString('glowworm:' + day) : undefined);
+    pressing = false;
     show(null);
     scoreEl.hidden = false;
     scoreEl.textContent = '0';
@@ -1321,13 +1528,18 @@
     }
     Sound.crash();
     Sound.mood(0.03);
+    Sound.intensity(0);
+    if (mode === 'daily' && ghostRec.length > 1 && (!ghost || score > ghost.score)) {
+      setItem(ghostKey(), JSON.stringify({ score, ys: ghostRec }));
+    }
+    $('overMode').textContent = mode === 'daily' ? `${t('daily')} · ${$('dailyDate').textContent}` : t('endless');
     if (navigator.vibrate) navigator.vibrate(150);
 
     pendingScore = score;
     comboEl.hidden = true;
     $('finalScore').textContent = score;
     $('stats').textContent = `${t('orbs')} ${stats.orbs} · ${t('closeCalls')} ${stats.close} · ${t('maxCombo')} ×${stats.maxMult}`;
-    if (distance > bestDist) { bestDist = Math.round(distance); setItem(BEST_DIST_KEY, String(bestDist)); }
+    if (distance > bestDist) { bestDist = Math.round(distance); setItem(distKey(mode), String(bestDist)); }
     const isBest = score > 0 && score > bestScore();
     const isTop = qualifies(score);
     $('newBest').hidden = !isBest;
@@ -1351,11 +1563,15 @@
     highlightIndex = addScore(name, pendingScore);
     nameInput.blur();
     updateBest();
-    showScores();
+    showScores(mode);
   }
 
-  function showScores() {
-    const list = loadScores();
+  let viewMode = 'endless';
+  function showScores(m) {
+    viewMode = m === 'daily' ? 'daily' : 'endless';
+    $('tabEndless').classList.toggle('active', viewMode === 'endless');
+    $('tabDaily').classList.toggle('active', viewMode === 'daily');
+    const list = loadScores(viewMode);
     const ol = $('scoreList');
     ol.innerHTML = '';
     if (!list.length) {
@@ -1378,6 +1594,7 @@
 
   function backToMenu() {
     state = 'menu';
+    Sound.intensity(0);
     scoreEl.hidden = true;
     comboEl.hidden = true;
     resetWorld();
@@ -1390,11 +1607,24 @@
     musicBtn.classList.toggle('muted', !Sound.musicOn);
   }
 
-  $('startBtn').addEventListener('click', startGame);
-  $('scoresBtn').addEventListener('click', showScores);
-  $('againBtn').addEventListener('click', startGame);
-  $('overScoresBtn').addEventListener('click', showScores);
-  $('scoresPlayBtn').addEventListener('click', startGame);
+  function syncChips() {
+    const ghostBtn = $('ghostBtn'), styleBtn = $('styleBtn');
+    ghostBtn.textContent = `${t('ghost')}: ${ghostOn ? t('on') : t('off')}`;
+    ghostBtn.classList.toggle('active', ghostOn);
+    styleBtn.textContent = `${t('music')}: ${Sound.style === 'rising' ? t('rising') : t('calm')}`;
+    styleBtn.classList.toggle('active', Sound.style === 'rising');
+  }
+
+  $('startBtn').addEventListener('click', () => startGame('endless'));
+  $('dailyBtn').addEventListener('click', () => startGame('daily'));
+  $('scoresBtn').addEventListener('click', () => showScores(mode));
+  $('againBtn').addEventListener('click', () => startGame(mode));
+  $('overScoresBtn').addEventListener('click', () => showScores(mode));
+  $('scoresPlayBtn').addEventListener('click', () => startGame(viewMode));
+  $('tabEndless').addEventListener('click', () => showScores('endless'));
+  $('tabDaily').addEventListener('click', () => showScores('daily'));
+  $('ghostBtn').addEventListener('click', () => { ghostOn = !ghostOn; setItem(GHOST_KEY, ghostOn ? '1' : '0'); syncChips(); });
+  $('styleBtn').addEventListener('click', () => { Sound.setStyle(Sound.style === 'rising' ? 'calm' : 'rising'); syncChips(); });
   $('scoresBackBtn').addEventListener('click', backToMenu);
   $('saveBtn').addEventListener('click', saveName);
   $('langBtn').addEventListener('click', () => {
@@ -1413,6 +1643,7 @@
   document.addEventListener('pointerdown', () => { Sound.init(); if (state === 'menu') Sound.mood(0.04); }, { once: true });
 
   window.addEventListener('resize', resize);
+  pruneOldDays();
   applyLang();
   syncMute();
   resize();
